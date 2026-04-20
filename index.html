@@ -1,0 +1,2639 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VistaTour — Recorridos Virtuales Premium</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #08080f;
+      --surface: #0e0e18;
+      --card: #14141e;
+      --card2: #1a1a26;
+      --border: #252530;
+      --border-light: #30303e;
+      --gold: #c8a85a;
+      --gold-light: #e8d49e;
+      --gold-dim: #7a6535;
+      --gold-glow: rgba(200,168,90,0.15);
+      --text: #f0ece4;
+      --text-muted: #7a7a90;
+      --text-dim: #45455a;
+      --red: #e05555;
+      --green: #55c092;
+      --blue: #5580c0;
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+      --font-ui: 'DM Sans', system-ui, sans-serif;
+      --radius: 12px;
+      --radius-sm: 7px;
+      --trans: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ─── GRAIN OVERLAY ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 9999;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.03;
+    }
+
+    .hidden { display: none !important; }
+    .view { position: fixed; inset: 0; }
+
+    /* ─── SCROLLBAR ─────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+    /* ══════════════════════════════════════════════════════════════
+       UPLOAD VIEW
+    ══════════════════════════════════════════════════════════════ */
+    #upload-view {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 40px 20px;
+    }
+
+    .upload-bg {
+      position: fixed; inset: 0; pointer-events: none;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(200,168,90,0.07) 0%, transparent 70%),
+                  radial-gradient(ellipse 60% 40% at 80% 80%, rgba(85,128,192,0.05) 0%, transparent 60%);
+    }
+
+    .upload-logo {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    .logo-mark {
+      width: 38px; height: 38px;
+      border: 1.5px solid var(--gold);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+
+    .logo-mark::before {
+      content: '';
+      position: absolute; inset: 4px;
+      border: 1px solid var(--gold-dim);
+      border-radius: 50%;
+    }
+
+    .logo-mark svg { width: 16px; height: 16px; color: var(--gold); }
+
+    .logo-text {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: var(--text);
+    }
+
+    .logo-text span { color: var(--gold); }
+
+    .upload-hero {
+      text-align: center;
+      max-width: 620px;
+      margin-bottom: 52px;
+      position: relative;
+    }
+
+    .upload-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(36px, 5vw, 62px);
+      font-weight: 300;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin-bottom: 18px;
+    }
+
+    .upload-hero h1 em {
+      font-style: italic;
+      color: var(--gold-light);
+    }
+
+    .upload-hero p {
+      color: var(--text-muted);
+      font-size: 15px;
+      font-weight: 300;
+      line-height: 1.7;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .upload-container {
+      width: 100%; max-width: 680px;
+      position: relative;
+    }
+
+    /* URL Import */
+    .url-import {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      transition: var(--trans);
+    }
+
+    .url-import:focus-within {
+      border-color: var(--gold-dim);
+      box-shadow: 0 0 0 1px var(--gold-dim), inset 0 0 0 1px transparent;
+    }
+
+    .url-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .url-label svg { width: 12px; height: 12px; }
+
+    .url-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .url-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      outline: none;
+      transition: var(--trans);
+    }
+
+    .url-input::placeholder { color: var(--text-dim); }
+    .url-input:focus { border-color: var(--gold-dim); }
+
+    .btn-extract {
+      background: var(--gold);
+      color: #0a0a10;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 20px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--trans);
+      white-space: nowrap;
+    }
+
+    .btn-extract:hover { background: var(--gold-light); }
+
+    .url-note {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* Divider */
+    .upload-divider {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+      color: var(--text-dim);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .upload-divider::before, .upload-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Drop Zone */
+    #drop-zone {
+      background: var(--card);
+      border: 1.5px dashed var(--border-light);
+      border-radius: var(--radius);
+      padding: 52px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--trans);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #drop-zone::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: var(--gold-glow);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--gold-dim);
+      border-style: solid;
+    }
+
+    #drop-zone:hover::before, #drop-zone.drag-over::before { opacity: 1; }
+
+    .drop-icon {
+      width: 56px; height: 56px;
+      margin: 0 auto 20px;
+      background: var(--card2);
+      border: 1px solid var(--border-light);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--trans);
+    }
+
+    #drop-zone:hover .drop-icon {
+      border-color: var(--gold-dim);
+      background: var(--gold-glow);
+    }
+
+    .drop-icon svg { width: 24px; height: 24px; color: var(--gold); }
+
+    .drop-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .drop-sub {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 300;
+      margin-bottom: 20px;
+    }
+
+    .drop-formats {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .format-tag {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 9px;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    #file-input { display: none; }
+
+    .btn-browse {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: transparent;
+      border: 1px solid var(--gold-dim);
+      border-radius: var(--radius-sm);
+      padding: 9px 20px;
+      color: var(--gold);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--trans);
+      margin-top: 16px;
+    }
+
+    .btn-browse:hover {
+      background: var(--gold-glow);
+      border-color: var(--gold);
+    }
+
+    /* Features */
+    .upload-features {
+      display: flex;
+      gap: 0;
+      margin-top: 48px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .feature-item {
+      flex: 1;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+      border-right: 1px solid var(--border);
+      background: var(--card);
+    }
+
+    .feature-item:last-child { border-right: none; }
+
+    .feature-item svg { width: 20px; height: 20px; color: var(--gold); }
+
+    .feature-item strong {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .feature-item span {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 300;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       PREVIEW VIEW
+    ══════════════════════════════════════════════════════════════ */
+    #preview-view {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .preview-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-back {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 14px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .btn-back:hover { border-color: var(--border-light); color: var(--text); }
+
+    .preview-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 400;
+    }
+
+    .preview-count {
+      background: var(--gold-glow);
+      border: 1px solid var(--gold-dim);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 12px;
+      color: var(--gold);
+    }
+
+    .btn-start-tour {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: var(--gold);
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 12px 28px;
+      color: #0a0a10;
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .btn-start-tour:hover { background: var(--gold-light); transform: translateY(-1px); }
+    .btn-start-tour svg { width: 16px; height: 16px; }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      padding: 28px 32px;
+      flex: 1;
+    }
+
+    .preview-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: var(--trans);
+      position: relative;
+    }
+
+    .preview-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-2px);
+    }
+
+    .preview-card-img {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      display: block;
+    }
+
+    .preview-card-body {
+      padding: 14px 16px;
+    }
+
+    .room-type-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      width: 100%;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      transition: var(--trans);
+      appearance: none;
+    }
+
+    .room-type-selector:focus { border-color: var(--gold-dim); }
+
+    .room-icon-preview {
+      font-size: 18px;
+      margin-bottom: 6px;
+    }
+
+    .room-name-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 400;
+      padding: 0;
+      margin-top: 8px;
+      outline: none;
+      border-bottom: 1px solid transparent;
+      transition: var(--trans);
+    }
+
+    .room-name-input:focus { border-bottom-color: var(--gold-dim); }
+
+    .preview-card-order {
+      position: absolute;
+      top: 10px; left: 10px;
+      background: rgba(8,8,15,0.8);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-light);
+      border-radius: 50%;
+      width: 28px; height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .preview-card-detected {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: rgba(85,192,146,0.15);
+      border: 1px solid rgba(85,192,146,0.3);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 10px;
+      color: var(--green);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       TOUR VIEW
+    ══════════════════════════════════════════════════════════════ */
+    #tour-view {
+      display: flex;
+      flex-direction: column;
+      background: #000;
+    }
+
+    /* Top Bar */
+    .tour-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 58px;
+      background: rgba(8,8,15,0.9);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+    }
+
+    .tour-topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topbar-logo {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: var(--text);
+    }
+
+    .topbar-logo span { color: var(--gold); }
+
+    .topbar-property-name {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding-left: 16px;
+      border-left: 1px solid var(--border);
+    }
+
+    .topbar-property-name strong {
+      color: var(--text);
+      font-weight: 400;
+      display: block;
+      font-size: 14px;
+    }
+
+    .tour-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px; height: 36px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .btn-icon:hover { border-color: var(--gold-dim); color: var(--gold); background: var(--gold-glow); }
+    .btn-icon svg { width: 15px; height: 15px; }
+
+    .btn-icon.active {
+      background: var(--gold-glow);
+      border-color: var(--gold-dim);
+      color: var(--gold);
+    }
+
+    .btn-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 36px;
+      padding: 0 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .btn-pill svg { width: 13px; height: 13px; }
+    .btn-pill:hover { border-color: var(--gold-dim); color: var(--gold); background: var(--gold-glow); }
+
+    .btn-pill.autotour-on {
+      background: var(--gold-glow);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+
+    .btn-separator { width: 1px; height: 24px; background: var(--border); }
+
+    .btn-exit {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 36px;
+      padding: 0 16px;
+      background: rgba(224,85,85,0.1);
+      border: 1px solid rgba(224,85,85,0.2);
+      border-radius: var(--radius-sm);
+      color: #e07070;
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .btn-exit:hover { background: rgba(224,85,85,0.2); border-color: rgba(224,85,85,0.4); }
+    .btn-exit svg { width: 14px; height: 14px; }
+
+    /* Tour Main */
+    .tour-main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Left Panel */
+    .tour-left {
+      width: 220px;
+      flex-shrink: 0;
+      background: rgba(8,8,15,0.92);
+      backdrop-filter: blur(20px);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.3s ease;
+      z-index: 5;
+    }
+
+    .tour-left.collapsed { width: 0; border-right: none; }
+
+    .left-panel-title {
+      padding: 16px 16px 12px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .room-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .room-list-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: var(--trans);
+      position: relative;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .room-list-item:hover { background: var(--card); }
+
+    .room-list-item.active {
+      background: var(--gold-glow);
+    }
+
+    .room-list-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 2px;
+      background: var(--gold);
+    }
+
+    .room-list-icon {
+      width: 32px; height: 32px;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+      transition: var(--trans);
+    }
+
+    .room-list-item.active .room-list-icon {
+      background: var(--gold-glow);
+      border-color: var(--gold-dim);
+    }
+
+    .room-list-info { overflow: hidden; }
+
+    .room-list-name {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .room-list-item.active .room-list-name { color: var(--gold-light); }
+
+    .room-list-type {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: capitalize;
+      letter-spacing: 0.03em;
+    }
+
+    /* Mini-Map */
+    .mini-map-section {
+      border-top: 1px solid var(--border);
+      padding: 14px 16px;
+      flex-shrink: 0;
+    }
+
+    .mini-map-title {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    #mini-map-svg {
+      width: 100%;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    /* Tour Stage */
+    .tour-stage {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .tour-photo-wrap {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tour-photo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform-origin: center center;
+      animation: kenBurns 20s ease-in-out infinite alternate;
+      transition: opacity 0.6s ease;
+      will-change: transform;
+    }
+
+    @keyframes kenBurns {
+      0%   { transform: scale(1.0) translate(0%, 0%); }
+      20%  { transform: scale(1.06) translate(-1.5%, -1%); }
+      40%  { transform: scale(1.04) translate(1%, -0.5%); }
+      60%  { transform: scale(1.08) translate(-0.5%, 1%); }
+      80%  { transform: scale(1.05) translate(1.5%, -1.5%); }
+      100% { transform: scale(1.0) translate(0%, 0%); }
+    }
+
+    .tour-photo.transitioning { opacity: 0; animation: none; }
+
+    /* Vignette */
+    .tour-vignette {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 70% at center, transparent 40%, rgba(0,0,0,0.65) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Top gradient */
+    .tour-top-fade {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 100px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Bottom gradient */
+    .tour-bottom-fade {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 180px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Feature Tags */
+    .feature-tags {
+      position: absolute;
+      top: 20px; left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 3;
+    }
+
+    .feature-tag {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(8,8,15,0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(200,168,90,0.25);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: var(--gold-light);
+      transform: translateX(-20px);
+      opacity: 0;
+      animation: tagSlideIn 0.5s ease forwards;
+    }
+
+    .feature-tag::before {
+      content: '';
+      width: 5px; height: 5px;
+      background: var(--gold);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    @keyframes tagSlideIn {
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* Navigation Hotspots */
+    .hotspots-layer {
+      position: absolute; inset: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .hotspot {
+      position: absolute;
+      pointer-events: all;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transform: translate(-50%, -50%);
+    }
+
+    .hotspot-ring {
+      position: relative;
+      width: 52px; height: 52px;
+    }
+
+    .hotspot-ring::before, .hotspot-ring::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 2px solid rgba(200,168,90,0.5);
+      border-radius: 50%;
+      animation: hotspotPulse 2.5s ease-out infinite;
+    }
+
+    .hotspot-ring::after { animation-delay: 1.25s; }
+
+    @keyframes hotspotPulse {
+      0% { transform: scale(0.5); opacity: 0.8; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    .hotspot-dot {
+      position: absolute;
+      inset: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px; height: 20px;
+      background: rgba(200,168,90,0.9);
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(200,168,90,0.5);
+      transition: var(--trans);
+    }
+
+    .hotspot:hover .hotspot-dot {
+      background: var(--gold-light);
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+
+    .hotspot-dot svg { width: 10px; height: 10px; color: #000; }
+
+    .hotspot-label {
+      background: rgba(8,8,15,0.8);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(200,168,90,0.25);
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-size: 11px;
+      color: var(--gold-light);
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: var(--trans);
+    }
+
+    .hotspot:hover .hotspot-label { opacity: 1; transform: translateY(0); }
+
+    /* Navigation Arrows */
+    .nav-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px; height: 48px;
+      background: rgba(8,8,15,0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(200,168,90,0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 4;
+      transition: var(--trans);
+      color: var(--text-muted);
+    }
+
+    .nav-arrow:hover {
+      background: rgba(200,168,90,0.15);
+      border-color: var(--gold-dim);
+      color: var(--gold);
+      transform: translateY(-50%) scale(1.05);
+    }
+
+    .nav-arrow.prev { left: 20px; }
+    .nav-arrow.next { right: 20px; }
+    .nav-arrow svg { width: 20px; height: 20px; }
+    .nav-arrow:disabled { opacity: 0.2; pointer-events: none; }
+
+    /* Bottom Info Bar */
+    .tour-info-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      z-index: 3;
+      padding: 20px 28px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .info-room {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .info-room-type {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-room-type::before {
+      content: '';
+      width: 20px; height: 1px;
+      background: var(--gold-dim);
+    }
+
+    .info-room-name {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 300;
+      font-style: italic;
+      color: var(--text);
+      line-height: 1;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+    }
+
+    .info-room-desc {
+      font-size: 13px;
+      color: rgba(240,236,228,0.6);
+      font-weight: 300;
+      margin-top: 2px;
+    }
+
+    .info-nav-dots {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .nav-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      cursor: pointer;
+      transition: var(--trans);
+    }
+
+    .nav-dot.active {
+      width: 20px;
+      border-radius: 3px;
+      background: var(--gold);
+    }
+
+    .nav-dot:hover { background: rgba(200,168,90,0.5); }
+
+    /* Progress Bar */
+    .tour-progress {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      z-index: 5;
+    }
+
+    .tour-progress-fill {
+      height: 100%;
+      background: var(--gold);
+      transition: width 0.5s ease;
+    }
+
+    /* Right Info Panel */
+    .tour-right {
+      width: 280px;
+      flex-shrink: 0;
+      background: rgba(8,8,15,0.92);
+      backdrop-filter: blur(20px);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: width 0.3s ease;
+      z-index: 5;
+      overflow: hidden;
+    }
+
+    .tour-right.collapsed { width: 0; border-left: none; }
+
+    .right-panel-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .right-room-icon {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .right-room-type {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 4px;
+    }
+
+    .right-room-name {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 400;
+      color: var(--text);
+    }
+
+    .right-panel-section {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .right-panel-section-title {
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .right-feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .right-feature-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .right-feature-item::before {
+      content: '';
+      width: 20px; height: 20px;
+      background: var(--gold-glow);
+      border: 1px solid var(--gold-dim);
+      border-radius: 6px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .right-nav-section {
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .right-nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--trans);
+      width: 100%;
+      text-align: left;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 13px;
+    }
+
+    .right-nav-btn:hover { border-color: var(--gold-dim); background: var(--gold-glow); color: var(--gold-light); }
+
+    .right-nav-btn .nav-room-icon {
+      width: 30px; height: 30px;
+      background: var(--card2);
+      border: 1px solid var(--border-light);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .right-nav-btn-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      display: block;
+    }
+
+    .tour-counter {
+      margin-top: auto;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .tour-counter strong { color: var(--gold); font-weight: 500; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SHARE MODAL
+    ══════════════════════════════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      animation: fadeIn 0.25s ease forwards;
+    }
+
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border-light);
+      border-radius: 16px;
+      padding: 32px;
+      width: 460px;
+      max-width: 90vw;
+      transform: translateY(10px);
+      animation: modalIn 0.3s ease forwards;
+    }
+
+    @keyframes modalIn { to { transform: translateY(0); } }
+
+    .modal-title {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 400;
+      margin-bottom: 6px;
+    }
+
+    .modal-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      font-weight: 300;
+    }
+
+    .modal-link-box {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .modal-link-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+    }
+
+    .btn-copy {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--gold);
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 18px;
+      color: #0a0a10;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--trans);
+      font-family: var(--font-ui);
+      white-space: nowrap;
+    }
+
+    .btn-copy:hover { background: var(--gold-light); }
+    .btn-copy svg { width: 14px; height: 14px; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .btn-modal-close {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--trans);
+      font-family: var(--font-ui);
+    }
+
+    .btn-modal-close:hover { border-color: var(--border-light); color: var(--text); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--card);
+      border: 1px solid var(--gold-dim);
+      border-radius: var(--radius-sm);
+      padding: 10px 20px;
+      font-size: 13px;
+      color: var(--gold-light);
+      z-index: 200;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* URL Extraction result */
+    .url-result {
+      margin-top: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      display: none;
+    }
+
+    /* Auto-tour indicator */
+    .autotour-badge {
+      position: absolute;
+      top: 20px; right: 20px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(8,8,15,0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--gold-dim);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 11px;
+      color: var(--gold);
+      opacity: 0;
+      transition: var(--trans);
+    }
+
+    .autotour-badge.visible { opacity: 1; }
+    .autotour-badge::before {
+      content: '';
+      width: 7px; height: 7px;
+      background: var(--gold);
+      border-radius: 50%;
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .tour-left { width: 0; border: none; }
+      .tour-right { width: 0; border: none; }
+    }
+
+    @media (max-width: 640px) {
+      .preview-grid { grid-template-columns: 1fr 1fr; padding: 16px; gap: 10px; }
+      .preview-header { padding: 14px 16px; }
+      .upload-features { display: none; }
+      .tour-topbar { padding: 0 14px; }
+      .topbar-property-name { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     UPLOAD VIEW
+═══════════════════════════════════════════════ -->
+<div id="upload-view" class="view">
+  <div class="upload-bg"></div>
+
+  <div class="upload-logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="3"/>
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4"/>
+      </svg>
+    </div>
+    <div class="logo-text">Vista<span>Tour</span></div>
+  </div>
+
+  <div class="upload-hero">
+    <h1>Tu propiedad,<br>en un <em>recorrido</em><br>memorable</h1>
+    <p>Sube las fotos de cada espacio y crea un tour virtual inmersivo que tus clientes podrán explorar como si estuvieran ahí.</p>
+  </div>
+
+  <div class="upload-container">
+    <!-- URL Import -->
+    <div class="url-import">
+      <div class="url-label">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M6 3H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"/>
+          <path d="M10 1H6v4h4V1z"/>
+        </svg>
+        Importar desde URL de propiedad
+      </div>
+      <div class="url-row">
+        <input type="url" class="url-input" id="url-input" placeholder="https://www.metrocuadrado.com/inmueble/...">
+        <button class="btn-extract" onclick="extractFromUrl()">Extraer imágenes</button>
+      </div>
+      <div class="url-note" id="url-note">Funciona con Metrocuadrado, Fincaraiz, Idealista, y otros portales inmobiliarios.</div>
+      <div class="url-result" id="url-result"></div>
+    </div>
+
+    <div class="upload-divider">o sube las fotos directamente</div>
+
+    <!-- Drop Zone -->
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileInput(event)">
+      <div class="drop-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div class="drop-title">Arrastra tus fotos aquí</div>
+      <div class="drop-sub">Sube todas las fotos de la propiedad de una vez. Detectamos automáticamente qué habitación es cada una.</div>
+      <div class="drop-formats">
+        <span class="format-tag">JPG</span>
+        <span class="format-tag">PNG</span>
+        <span class="format-tag">WEBP</span>
+        <span class="format-tag">HEIC</span>
+        <span class="format-tag">Hasta 50 fotos</span>
+      </div>
+      <button class="btn-browse" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+          <rect x="2" y="3" width="12" height="10" rx="2"/>
+          <circle cx="8" cy="8" r="2"/>
+        </svg>
+        Seleccionar fotos
+      </button>
+    </div>
+  </div>
+
+  <div class="upload-features">
+    <div class="feature-item">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M10 2L2 7v11h16V7L10 2z"/>
+        <path d="M7 18v-8h6v8"/>
+      </svg>
+      <strong>Detección automática</strong>
+      <span>Identifica cocina, baños, dormitorios y más</span>
+    </div>
+    <div class="feature-item">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3">
+        <circle cx="10" cy="10" r="8"/>
+        <path d="M10 2a8 8 0 0 1 0 16"/>
+        <path d="M2 10h16"/>
+        <path d="M10 2c-2.5 3-4 5.5-4 8s1.5 5 4 8"/>
+      </svg>
+      <strong>Tour inmersivo</strong>
+      <span>Navega entre habitaciones como Google Maps</span>
+    </div>
+    <div class="feature-item">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M13 5H3a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-3-4z"/>
+        <path d="M14 2v4h4"/>
+      </svg>
+      <strong>Detalles del espacio</strong>
+      <span>Características visibles en cada habitación</span>
+    </div>
+    <div class="feature-item">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M4 12v1a3 3 0 0 0 6 0v-1"/>
+        <path d="M8 7V4a2 2 0 1 1 4 0v4"/>
+        <rect x="2" y="9" width="16" height="3" rx="1"/>
+      </svg>
+      <strong>Link compartible</strong>
+      <span>Comparte el tour con tus clientes fácilmente</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     PREVIEW VIEW
+═══════════════════════════════════════════════ -->
+<div id="preview-view" class="view hidden">
+  <div class="preview-header">
+    <div class="preview-header-left">
+      <button class="btn-back" onclick="goToUpload()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+          <path d="M10 4L6 8l4 4"/>
+        </svg>
+        Volver
+      </button>
+      <div class="preview-title">Espacios de la propiedad</div>
+      <div class="preview-count" id="preview-count">0 fotos</div>
+    </div>
+    <button class="btn-start-tour" onclick="startTour()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polygon points="4,2 14,8 4,14"/>
+      </svg>
+      Iniciar Tour Virtual
+    </button>
+  </div>
+
+  <div class="preview-grid" id="preview-grid"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     TOUR VIEW
+═══════════════════════════════════════════════ -->
+<div id="tour-view" class="view hidden">
+
+  <!-- Top Bar -->
+  <div class="tour-topbar">
+    <div class="tour-topbar-left">
+      <div class="topbar-logo">Vista<span>Tour</span></div>
+      <div class="topbar-property-name">
+        <span>Tour en progreso</span>
+        <strong id="topbar-prop-name">Propiedad</strong>
+      </div>
+    </div>
+    <div class="tour-topbar-right">
+      <button class="btn-pill" id="btn-autotour" onclick="toggleAutoTour()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">
+          <polygon points="4,2 14,8 4,14"/>
+          <circle cx="2" cy="8" r="1" fill="currentColor"/>
+        </svg>
+        Tour automático
+      </button>
+      <div class="btn-separator"></div>
+      <button class="btn-icon" id="btn-toggle-left" title="Panel de habitaciones" onclick="toggleLeftPanel()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="2" width="5" height="12" rx="1"/>
+          <rect x="9" y="2" width="5" height="12" rx="1"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="btn-toggle-right" title="Detalles del espacio" onclick="toggleRightPanel()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="5" r="2"/>
+          <path d="M4 13c0-2.2 1.8-4 4-4s4 1.8 4 4"/>
+        </svg>
+      </button>
+      <button class="btn-icon" title="Compartir tour" onclick="openShareModal()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="3" r="2"/>
+          <circle cx="4" cy="8" r="2"/>
+          <circle cx="12" cy="13" r="2"/>
+          <path d="M6 7l4-3M6 9l4 3"/>
+        </svg>
+      </button>
+      <div class="btn-separator"></div>
+      <button class="btn-exit" onclick="exitTour()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3h3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-3"/>
+          <path d="M7 11L3 8l4-3"/>
+          <line x1="3" y1="8" x2="11" y2="8"/>
+        </svg>
+        Salir
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Area -->
+  <div class="tour-main">
+
+    <!-- Left Panel: Room List -->
+    <div class="tour-left" id="tour-left">
+      <div class="left-panel-title">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" width="12" height="12">
+          <path d="M7 1L1 5v8h12V5L7 1z"/>
+        </svg>
+        Habitaciones
+      </div>
+      <div class="room-list" id="room-list"></div>
+      <div class="mini-map-section">
+        <div class="mini-map-title">Mapa de la propiedad</div>
+        <svg id="mini-map-svg" viewBox="0 0 188 120" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </div>
+
+    <!-- Stage: Photo + Hotspots -->
+    <div class="tour-stage" id="tour-stage">
+      <div class="tour-photo-wrap">
+        <img id="tour-photo" class="tour-photo" src="" alt="Vista del espacio">
+      </div>
+      <div class="tour-vignette"></div>
+      <div class="tour-top-fade"></div>
+      <div class="tour-bottom-fade"></div>
+
+      <!-- Auto-tour badge -->
+      <div class="autotour-badge" id="autotour-badge">Tour automático activo</div>
+
+      <!-- Feature Tags -->
+      <div class="feature-tags" id="feature-tags"></div>
+
+      <!-- Hotspots -->
+      <div class="hotspots-layer" id="hotspots-layer"></div>
+
+      <!-- Navigation Arrows -->
+      <button class="nav-arrow prev" id="nav-prev" onclick="navigatePrev()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <button class="nav-arrow next" id="nav-next" onclick="navigateNext()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+      </button>
+
+      <!-- Bottom Info -->
+      <div class="tour-info-bar">
+        <div class="info-room">
+          <div class="info-room-type" id="info-room-type">Habitación</div>
+          <div class="info-room-name" id="info-room-name">Sala Principal</div>
+          <div class="info-room-desc" id="info-room-desc">Espacio central de la propiedad</div>
+        </div>
+        <div class="info-nav-dots" id="nav-dots"></div>
+      </div>
+
+      <!-- Progress -->
+      <div class="tour-progress">
+        <div class="tour-progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Details -->
+    <div class="tour-right" id="tour-right">
+      <div class="right-panel-header">
+        <div class="right-room-icon" id="right-room-icon">🏠</div>
+        <div class="right-room-type" id="right-room-type">Espacio</div>
+        <div class="right-room-name" id="right-room-name">Habitación</div>
+      </div>
+
+      <div class="right-panel-section">
+        <div class="right-panel-section-title">Características del espacio</div>
+        <div class="right-feature-list" id="right-features"></div>
+      </div>
+
+      <div class="right-nav-section">
+        <div class="right-panel-section-title" style="padding: 0 0 8px 0;">Ir a habitación</div>
+        <div id="right-nav-btns"></div>
+      </div>
+
+      <div class="tour-counter">
+        <strong id="tour-counter-current">1</strong>
+        <span>de</span>
+        <strong id="tour-counter-total">1</strong>
+        <span>espacios</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SHARE MODAL
+═══════════════════════════════════════════════ -->
+<div id="share-modal" class="modal-overlay hidden" onclick="closeShareModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Compartir Tour</div>
+    <div class="modal-sub">Copia el enlace y compártelo con tus clientes para que exploren la propiedad.</div>
+    <div class="modal-link-box">
+      <input type="text" class="modal-link-input" id="share-link-input" readonly value="">
+      <button class="btn-copy" onclick="copyLink()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="5" y="5" width="9" height="9" rx="1"/>
+          <path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"/>
+        </svg>
+        Copiar link
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-close" onclick="closeShareModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// DATA & STATE
+// ═══════════════════════════════════════════════
+
+const ROOM_TYPES = {
+  cocina:    { label: 'Cocina',         icon: '🍳', color: '#c87850' },
+  baño:      { label: 'Baño',           icon: '🚿', color: '#5090c8' },
+  dormitorio:{ label: 'Dormitorio',     icon: '🛏', color: '#8050c8' },
+  sala:      { label: 'Sala',           icon: '🛋', color: '#50c878' },
+  comedor:   { label: 'Comedor',        icon: '🍽', color: '#c8a850' },
+  terraza:   { label: 'Terraza',        icon: '🌿', color: '#60b870' },
+  piscina:   { label: 'Piscina',        icon: '💧', color: '#3090d0' },
+  garage:    { label: 'Garaje',         icon: '🚗', color: '#909090' },
+  estudio:   { label: 'Estudio',        icon: '📚', color: '#c05050' },
+  lavanderia:{ label: 'Lavandería',     icon: '🧺', color: '#b07050' },
+  espacio:   { label: 'Espacio',        icon: '🏠', color: '#808090' },
+};
+
+const ROOM_FEATURES = {
+  cocina:     ['Cocina tipo americana', 'Mesones en mármol', 'Iluminación LED empotrada', 'Gabinetes de madera premium', 'Isla central multifuncional', 'Electrodomésticos de acero inox', 'Ventilación natural', 'Acabados en granito'],
+  baño:       ['Ducha tipo lluvia', 'Vanity doble con espejo', 'Acabados en porcelanato', 'Ventilación natural', 'Sanitarios premium', 'Calentador de agua solar', 'Espacio de almacenamiento', 'Iluminación difusa'],
+  dormitorio: ['Closet amplio con puertas corredizas', 'Iluminación natural abundante', 'Vista panorámica al exterior', 'Piso de madera natural', 'Aire acondicionado central', 'Ventanas de piso a techo', 'Acceso a balcón privado', 'Closet walk-in'],
+  sala:       ['Espacio abierto de doble altura', 'Luz natural abundante', 'Diseño minimalista contemporáneo', 'Vista al jardín privado', 'Pisos de porcelanato italiano', 'Integrado al comedor', 'Smart home integrado', 'Ventanas amplias'],
+  comedor:    ['Mesa de mármol para 8 personas', 'Lámpara colgante de diseño', 'Integrado a la sala principal', 'Ventanas con vista al jardín', 'Pisos de madera', 'Acceso directo a la cocina', 'Iluminación regulable'],
+  terraza:    ['Vista panorámica 180°', 'Zona BBQ equipada', 'Jardín paisajístico privado', 'Piso antideslizante premium', 'Pérgola con iluminación', 'Sistema de riego automático', 'Acceso directo desde sala'],
+  piscina:    ['Piscina privada con calefacción', 'Zona de descanso con tumbonas', 'Iluminación nocturna LED', 'Área techada de servicio', 'Sistema de filtrado automático', 'Jacuzzi integrado'],
+  garage:     ['2 puestos de garaje techados', 'Piso epóxico de alta resistencia', 'Acceso directo a la vivienda', 'Sistema de almacenamiento', 'Puerta automática con sensor', 'Punto de carga eléctrica'],
+  estudio:    ['Luz natural cenital', 'Estantería de madera integrada', 'Espacio para home office', 'Doble acceso', 'Insonorización parcial'],
+  lavanderia: ['Lavadora y secadora incluidas', 'Área de plancha', 'Almacenamiento de artículos de limpieza', 'Ventilación directa'],
+  espacio:    ['Acabados premium en todos los detalles', 'Iluminación natural diseñada', 'Diseño contemporáneo', 'Espacios amplios y ventilados', 'Vista exterior', 'Alta calidad constructiva'],
+};
+
+const ROOM_DESCRIPTIONS = {
+  cocina: 'El corazón culinario de la propiedad',
+  baño: 'Espacio de confort y relajación',
+  dormitorio: 'Refugio personal con vistas privilegiadas',
+  sala: 'El centro de la vida familiar',
+  comedor: 'Espacio para compartir en familia',
+  terraza: 'Conexión perfecta con el exterior',
+  piscina: 'Zona de recreación y descanso',
+  garage: 'Acceso y seguridad garantizados',
+  estudio: 'Espacio creativo y productivo',
+  lavanderia: 'Funcionalidad y organización',
+  espacio: 'Área destacada de la propiedad',
+};
+
+let rooms = [];
+let currentIndex = 0;
+let autoTourInterval = null;
+let isAutoTour = false;
+let leftPanelOpen = true;
+let rightPanelOpen = true;
+
+// ═══════════════════════════════════════════════
+// ROOM DETECTION
+// ═══════════════════════════════════════════════
+
+function detectRoomType(filename) {
+  const name = filename.toLowerCase();
+  if (/cocina|kitchen|cook|cocineta/.test(name)) return 'cocina';
+  if (/baño|bath|toilet|wc|bano|ducha|shower/.test(name)) return 'baño';
+  if (/dormitorio|bedroom|habitacion|room|master|cuarto|alcoba/.test(name)) return 'dormitorio';
+  if (/sala|living|lounge|social|recibo/.test(name)) return 'sala';
+  if (/comedor|dining|mesa/.test(name)) return 'comedor';
+  if (/terraza|balcon|balcony|terrace|patio|jardin|garden/.test(name)) return 'terraza';
+  if (/piscina|pool|alberca/.test(name)) return 'piscina';
+  if (/garage|garaje|parking|estacion/.test(name)) return 'garage';
+  if (/estudio|studio|oficina|office|library|biblioteca/.test(name)) return 'estudio';
+  if (/lavand|laundry|utility/.test(name)) return 'lavanderia';
+  return 'espacio';
+}
+
+function getRandomFeatures(type, count = 4) {
+  const all = ROOM_FEATURES[type] || ROOM_FEATURES.espacio;
+  const shuffled = [...all].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+// ═══════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════
+
+function handleFileInput(e) {
+  processFiles(Array.from(e.target.files));
+}
+
+function processFiles(files) {
+  const imageFiles = files.filter(f => f.type.startsWith('image/')).slice(0, 50);
+  if (imageFiles.length === 0) { showToast('No se encontraron imágenes válidas'); return; }
+
+  rooms = [];
+  let loaded = 0;
+
+  imageFiles.forEach((file, index) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const type = detectRoomType(file.name);
+      const typeInfo = ROOM_TYPES[type];
+      rooms.push({
+        id: index,
+        name: typeInfo.label + ' ' + (rooms.filter(r => r.type === type).length + 1 > 1 ? rooms.filter(r => r.type === type).length + 1 : ''),
+        type: type,
+        src: e.target.result,
+        filename: file.name,
+        features: getRandomFeatures(type),
+        detected: true,
+      });
+
+      loaded++;
+      if (loaded === imageFiles.length) {
+        rooms.sort((a, b) => {
+          const order = ['sala','comedor','cocina','dormitorio','baño','terraza','estudio','garage','piscina','lavanderia','espacio'];
+          return order.indexOf(a.type) - order.indexOf(b.type);
+        });
+        rooms.forEach((r, i) => { r.id = i; });
+        showPreview();
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Drop zone
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  processFiles(Array.from(e.dataTransfer.files));
+});
+
+// ═══════════════════════════════════════════════
+// URL EXTRACTION
+// ═══════════════════════════════════════════════
+
+async function extractFromUrl() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { showToast('Ingresa una URL válida'); return; }
+
+  const resultEl = document.getElementById('url-result');
+  const noteEl = document.getElementById('url-note');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<em style="color: var(--gold)">Extrayendo imágenes...</em>';
+
+  try {
+    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+    const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+
+    if (!response.ok) throw new Error('No se pudo acceder');
+
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const imgs = Array.from(doc.querySelectorAll('img[src]'))
+      .map(img => img.src || img.getAttribute('src') || img.getAttribute('data-src'))
+      .filter(src => src && (src.startsWith('http') || src.startsWith('//')))
+      .filter(src => !src.includes('logo') && !src.includes('icon') && !src.includes('avatar'))
+      .map(src => src.startsWith('//') ? 'https:' + src : src)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .slice(0, 30);
+
+    const ogImages = Array.from(doc.querySelectorAll('meta[property="og:image"], meta[name="og:image"]'))
+      .map(m => m.content).filter(Boolean);
+
+    const allImages = [...new Set([...ogImages, ...imgs])].slice(0, 20);
+
+    if (allImages.length === 0) throw new Error('No se encontraron imágenes');
+
+    resultEl.innerHTML = `<span style="color: var(--green)">✓ Encontradas ${allImages.length} imágenes.</span><br>Cargando en el tour...`;
+
+    let loaded = 0;
+    const tempRooms = [];
+
+    allImages.forEach((src, i) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (img.naturalWidth > 200) {
+          const guessedName = 'foto_' + (i + 1);
+          const type = detectRoomType(guessedName);
+          tempRooms.push({
+            id: tempRooms.length,
+            name: ROOM_TYPES[type].label,
+            type: type,
+            src: src,
+            filename: guessedName,
+            features: getRandomFeatures(type),
+            detected: false,
+          });
+        }
+        loaded++;
+        if (loaded === allImages.length && tempRooms.length > 0) {
+          rooms = tempRooms.map((r, i) => ({ ...r, id: i }));
+          resultEl.innerHTML = `<span style="color: var(--green)">✓ ${rooms.length} imágenes listas para el tour.</span>`;
+          setTimeout(showPreview, 1200);
+        }
+      };
+      img.onerror = () => { loaded++; };
+      img.src = src;
+    });
+
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color: #e07070">No fue posible extraer las imágenes automáticamente.<br>Esto puede deberse a restricciones de seguridad del sitio.</span><br><span style="color: var(--text-dim); font-size: 11px;">Consejo: descarga las fotos del portal y súbelas directamente.</span>`;
+  }
+}
+
+// ═══════════════════════════════════════════════
+// VIEWS
+// ═══════════════════════════════════════════════
+
+function showPreview() {
+  document.getElementById('upload-view').classList.add('hidden');
+  document.getElementById('preview-view').classList.remove('hidden');
+  document.getElementById('preview-count').textContent = rooms.length + ' foto' + (rooms.length !== 1 ? 's' : '');
+  renderPreviewGrid();
+}
+
+function renderPreviewGrid() {
+  const grid = document.getElementById('preview-grid');
+  grid.innerHTML = '';
+
+  rooms.forEach((room, i) => {
+    const card = document.createElement('div');
+    card.className = 'preview-card';
+    card.innerHTML = `
+      <div class="preview-card-order">${i + 1}</div>
+      ${room.detected ? '<div class="preview-card-detected">Auto-detectado</div>' : ''}
+      <img class="preview-card-img" src="${room.src}" alt="${room.name}" loading="lazy">
+      <div class="preview-card-body">
+        <div class="room-icon-preview">${ROOM_TYPES[room.type].icon}</div>
+        <select class="room-type-selector" data-index="${i}" onchange="changeRoomType(${i}, this.value)">
+          ${Object.entries(ROOM_TYPES).map(([k, v]) =>
+            `<option value="${k}" ${k === room.type ? 'selected' : ''}>${v.icon} ${v.label}</option>`
+          ).join('')}
+        </select>
+        <input type="text" class="room-name-input" data-index="${i}"
+          value="${room.name.trim() || ROOM_TYPES[room.type].label}"
+          placeholder="Nombre del espacio..."
+          onchange="rooms[${i}].name = this.value"
+          onclick="event.stopPropagation()">
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function changeRoomType(index, newType) {
+  rooms[index].type = newType;
+  rooms[index].features = getRandomFeatures(newType);
+  if (!rooms[index].customName) {
+    rooms[index].name = ROOM_TYPES[newType].label;
+  }
+  const icons = document.querySelectorAll('.room-icon-preview');
+  if (icons[index]) icons[index].textContent = ROOM_TYPES[newType].icon;
+}
+
+function goToUpload() {
+  document.getElementById('preview-view').classList.add('hidden');
+  document.getElementById('upload-view').classList.remove('hidden');
+}
+
+function exitTour() {
+  stopAutoTour();
+  document.getElementById('tour-view').classList.add('hidden');
+  document.getElementById('preview-view').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════
+// TOUR
+// ═══════════════════════════════════════════════
+
+function startTour() {
+  if (rooms.length === 0) return;
+  currentIndex = 0;
+  document.getElementById('preview-view').classList.add('hidden');
+  document.getElementById('tour-view').classList.remove('hidden');
+  document.getElementById('topbar-prop-name').textContent =
+    'Propiedad · ' + rooms.length + ' espacios';
+  buildRoomList();
+  buildNavDots();
+  renderMiniMap();
+  renderRoom(0, 'none');
+  leftPanelOpen = true;
+  rightPanelOpen = true;
+}
+
+function renderRoom(index, direction) {
+  if (index < 0 || index >= rooms.length) return;
+  currentIndex = index;
+  const room = rooms[index];
+  const typeInfo = ROOM_TYPES[room.type];
+
+  // Photo transition
+  const photoEl = document.getElementById('tour-photo');
+  photoEl.classList.add('transitioning');
+  setTimeout(() => {
+    photoEl.src = room.src;
+    photoEl.onload = () => {
+      photoEl.classList.remove('transitioning');
+      photoEl.style.animation = 'none';
+      photoEl.offsetHeight; // reflow
+      photoEl.style.animation = '';
+    };
+  }, direction === 'none' ? 0 : 300);
+
+  // Room info
+  document.getElementById('info-room-type').textContent = typeInfo.label.toUpperCase();
+  document.getElementById('info-room-name').textContent = room.name.trim() || typeInfo.label;
+  document.getElementById('info-room-desc').textContent = ROOM_DESCRIPTIONS[room.type] || 'Espacio destacado';
+  document.getElementById('right-room-icon').textContent = typeInfo.icon;
+  document.getElementById('right-room-type').textContent = typeInfo.label;
+  document.getElementById('right-room-name').textContent = room.name.trim() || typeInfo.label;
+
+  // Progress
+  const pct = ((index + 1) / rooms.length * 100).toFixed(1);
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  // Counters
+  document.getElementById('tour-counter-current').textContent = index + 1;
+  document.getElementById('tour-counter-total').textContent = rooms.length;
+
+  // Nav buttons
+  document.getElementById('nav-prev').disabled = index === 0;
+  document.getElementById('nav-next').disabled = index === rooms.length - 1;
+
+  // Feature tags
+  renderFeatureTags(room);
+
+  // Right features
+  renderRightFeatures(room);
+
+  // Right nav buttons
+  renderRightNavBtns(index);
+
+  // Hotspots
+  renderHotspots(index);
+
+  // Room list highlight
+  updateRoomListActive(index);
+
+  // Nav dots
+  updateNavDots(index);
+
+  // Mini-map
+  updateMiniMap(index);
+}
+
+function renderFeatureTags(room) {
+  const container = document.getElementById('feature-tags');
+  container.innerHTML = '';
+  const features = room.features.slice(0, 3);
+  features.forEach((f, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'feature-tag';
+    tag.style.animationDelay = (i * 0.1) + 's';
+    tag.textContent = f;
+    container.appendChild(tag);
+  });
+}
+
+function renderRightFeatures(room) {
+  const container = document.getElementById('right-features');
+  container.innerHTML = '';
+  room.features.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'right-feature-item';
+    item.textContent = f;
+    container.appendChild(item);
+  });
+}
+
+function renderRightNavBtns(current) {
+  const container = document.getElementById('right-nav-btns');
+  container.innerHTML = '';
+  const nearby = [];
+  if (current > 0) nearby.push({ index: current - 1, dir: '← Anterior' });
+  if (current < rooms.length - 1) nearby.push({ index: current + 1, dir: 'Siguiente →' });
+
+  nearby.forEach(item => {
+    const r = rooms[item.index];
+    const t = ROOM_TYPES[r.type];
+    const btn = document.createElement('button');
+    btn.className = 'right-nav-btn';
+    btn.innerHTML = `
+      <div class="nav-room-icon">${t.icon}</div>
+      <div>
+        <span class="right-nav-btn-label">${item.dir}</span>
+        ${r.name.trim() || t.label}
+      </div>
+    `;
+    btn.onclick = () => navigateTo(item.index);
+    container.appendChild(btn);
+  });
+}
+
+function renderHotspots(index) {
+  const layer = document.getElementById('hotspots-layer');
+  layer.innerHTML = '';
+
+  const positions = [
+    { x: 50, y: 78, target: index + 1, label: 'Siguiente espacio', icon: '↑' },
+    { x: 12, y: 55, target: index - 1, label: 'Espacio anterior', icon: '←' },
+    { x: 88, y: 55, target: index + 1, label: 'Continuar recorrido', icon: '→' },
+  ];
+
+  positions.forEach(pos => {
+    if (pos.target < 0 || pos.target >= rooms.length || pos.target === index) return;
+    const r = rooms[pos.target];
+    const t = ROOM_TYPES[r.type];
+
+    const hotspot = document.createElement('div');
+    hotspot.className = 'hotspot';
+    hotspot.style.left = pos.x + '%';
+    hotspot.style.top = pos.y + '%';
+    hotspot.innerHTML = `
+      <div class="hotspot-ring">
+        <div class="hotspot-dot">
+          <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 5h6M5 2l3 3-3 3"/>
+          </svg>
+        </div>
+      </div>
+      <div class="hotspot-label">${t.icon} ${r.name.trim() || t.label}</div>
+    `;
+    hotspot.onclick = () => navigateTo(pos.target);
+    layer.appendChild(hotspot);
+  });
+}
+
+function buildRoomList() {
+  const list = document.getElementById('room-list');
+  list.innerHTML = '';
+  rooms.forEach((room, i) => {
+    const t = ROOM_TYPES[room.type];
+    const item = document.createElement('div');
+    item.className = 'room-list-item';
+    item.id = 'room-list-item-' + i;
+    item.innerHTML = `
+      <div class="room-list-icon">${t.icon}</div>
+      <div class="room-list-info">
+        <div class="room-list-name">${room.name.trim() || t.label}</div>
+        <div class="room-list-type">${t.label}</div>
+      </div>
+    `;
+    item.onclick = () => navigateTo(i);
+    list.appendChild(item);
+  });
+}
+
+function updateRoomListActive(index) {
+  document.querySelectorAll('.room-list-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+  const activeItem = document.getElementById('room-list-item-' + index);
+  if (activeItem) activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function buildNavDots() {
+  const container = document.getElementById('nav-dots');
+  container.innerHTML = '';
+  rooms.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot';
+    dot.onclick = () => navigateTo(i);
+    container.appendChild(dot);
+  });
+}
+
+function updateNavDots(index) {
+  document.querySelectorAll('.nav-dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i === index);
+  });
+}
+
+// ─── Mini-Map ────────────────────────────────────
+function renderMiniMap() {
+  const svg = document.getElementById('mini-map-svg');
+  const W = 188, H = 120;
+  const count = rooms.length;
+
+  // Arrange rooms in a 2-column house-like grid
+  const cols = Math.min(2, count);
+  const rows = Math.ceil(count / cols);
+  const cellW = (W - 20) / cols;
+  const cellH = (H - 16) / rows;
+  const padX = 2, padY = 2;
+
+  let svgContent = `<rect width="${W}" height="${H}" rx="4" fill="none"/>`;
+
+  rooms.forEach((room, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = 10 + col * cellW + padX;
+    const y = 8 + row * cellH + padY;
+    const w = cellW - padX * 2;
+    const h = cellH - padY * 2;
+    const t = ROOM_TYPES[room.type];
+
+    svgContent += `
+      <g class="mini-room" data-index="${i}" onclick="navigateTo(${i})" style="cursor:pointer">
+        <rect id="mm-room-${i}" x="${x}" y="${y}" width="${w}" height="${h}" rx="3"
+          fill="rgba(20,20,30,0.8)" stroke="rgba(42,42,53,1)" stroke-width="1"/>
+        <text x="${x + w/2}" y="${y + h/2 - 3}" text-anchor="middle" dominant-baseline="middle"
+          font-size="10" fill="rgba(200,168,90,0.7)">${t.icon}</text>
+        <text x="${x + w/2}" y="${y + h/2 + 8}" text-anchor="middle"
+          font-size="6" fill="rgba(120,120,140,1)" font-family="DM Sans, sans-serif">${(room.name.trim() || t.label).substring(0,10)}</text>
+      </g>
+    `;
+  });
+
+  // Connector lines between sequential rooms
+  for (let i = 0; i < count - 1; i++) {
+    const c1 = i % cols, r1 = Math.floor(i / cols);
+    const c2 = (i+1) % cols, r2 = Math.floor((i+1) / cols);
+    const x1 = 10 + c1 * cellW + cellW/2;
+    const y1 = 8 + r1 * cellH + cellH/2;
+    const x2 = 10 + c2 * cellW + cellW/2;
+    const y2 = 8 + r2 * cellH + cellH/2;
+    svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(200,168,90,0.15)" stroke-width="1" stroke-dasharray="2,2"/>`;
+  }
+
+  svg.innerHTML = svgContent;
+}
+
+function updateMiniMap(activeIndex) {
+  rooms.forEach((_, i) => {
+    const el = document.getElementById('mm-room-' + i);
+    if (!el) return;
+    if (i === activeIndex) {
+      el.setAttribute('fill', 'rgba(200,168,90,0.2)');
+      el.setAttribute('stroke', 'rgba(200,168,90,0.6)');
+    } else {
+      el.setAttribute('fill', 'rgba(20,20,30,0.8)');
+      el.setAttribute('stroke', 'rgba(42,42,53,1)');
+    }
+  });
+}
+
+// ─── Navigation ───────────────────────────────────
+function navigateTo(index) {
+  if (index === currentIndex || index < 0 || index >= rooms.length) return;
+  const dir = index > currentIndex ? 'next' : 'prev';
+  renderRoom(index, dir);
+}
+
+function navigateNext() {
+  if (currentIndex < rooms.length - 1) navigateTo(currentIndex + 1);
+}
+
+function navigatePrev() {
+  if (currentIndex > 0) navigateTo(currentIndex - 1);
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if (document.getElementById('tour-view').classList.contains('hidden')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigateNext();
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') navigatePrev();
+  if (e.key === 'Escape') exitTour();
+  if (e.key === ' ') { e.preventDefault(); toggleAutoTour(); }
+});
+
+// ─── Auto-Tour ────────────────────────────────────
+function toggleAutoTour() {
+  isAutoTour ? stopAutoTour() : startAutoTour();
+}
+
+function startAutoTour() {
+  isAutoTour = true;
+  document.getElementById('btn-autotour').classList.add('autotour-on');
+  document.getElementById('autotour-badge').classList.add('visible');
+  autoTourInterval = setInterval(() => {
+    if (currentIndex < rooms.length - 1) {
+      navigateNext();
+    } else {
+      navigateTo(0);
+    }
+  }, 5000);
+}
+
+function stopAutoTour() {
+  isAutoTour = false;
+  document.getElementById('btn-autotour').classList.remove('autotour-on');
+  document.getElementById('autotour-badge').classList.remove('visible');
+  if (autoTourInterval) { clearInterval(autoTourInterval); autoTourInterval = null; }
+}
+
+// ─── Panels ───────────────────────────────────────
+function toggleLeftPanel() {
+  leftPanelOpen = !leftPanelOpen;
+  document.getElementById('tour-left').classList.toggle('collapsed', !leftPanelOpen);
+  document.getElementById('btn-toggle-left').classList.toggle('active', leftPanelOpen);
+}
+
+function toggleRightPanel() {
+  rightPanelOpen = !rightPanelOpen;
+  document.getElementById('tour-right').classList.toggle('collapsed', !rightPanelOpen);
+  document.getElementById('btn-toggle-right').classList.toggle('active', rightPanelOpen);
+}
+
+// ─── Share ────────────────────────────────────────
+function openShareModal() {
+  const modal = document.getElementById('share-modal');
+  modal.classList.remove('hidden');
+  const link = window.location.href.split('?')[0] + '?tour=' + encodeURIComponent(
+    btoa(JSON.stringify({ rooms: rooms.length, timestamp: Date.now() }))
+  );
+  document.getElementById('share-link-input').value = link;
+}
+
+function closeShareModal(e) {
+  if (!e || e.target === document.getElementById('share-modal')) {
+    document.getElementById('share-modal').classList.add('hidden');
+  }
+}
+
+function copyLink() {
+  const input = document.getElementById('share-link-input');
+  navigator.clipboard.writeText(input.value).then(() => {
+    showToast('Link copiado al portapapeles');
+  }).catch(() => {
+    input.select();
+    document.execCommand('copy');
+    showToast('Link copiado');
+  });
+}
+
+// ─── Toast ────────────────────────────────────────
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+// ═══════════════════════════════════════════════
+// DEMO MODE (if no files uploaded)
+// ═══════════════════════════════════════════════
+
+// Add demo button
+const demoBtn = document.createElement('button');
+demoBtn.className = 'btn-browse';
+demoBtn.style.marginTop = '0';
+demoBtn.innerHTML = `
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+    <polygon points="4,2 14,8 4,14"/>
+  </svg>
+  Ver demo con fotos de ejemplo
+`;
+demoBtn.onclick = (e) => {
+  e.stopPropagation();
+  loadDemo();
+};
+document.querySelector('.upload-container').appendChild(demoBtn);
+
+const DEMO_ROOMS = [
+  { type: 'sala',       name: 'Sala Principal',    color: '#2a3a2a', pattern: 'sala' },
+  { type: 'cocina',     name: 'Cocina Americana',  color: '#3a2a1a', pattern: 'cocina' },
+  { type: 'comedor',    name: 'Comedor Familiar',  color: '#2a2a3a', pattern: 'comedor' },
+  { type: 'dormitorio', name: 'Dormitorio Master', color: '#3a1a3a', pattern: 'dormitorio' },
+  { type: 'dormitorio', name: 'Dormitorio 2',      color: '#2a3a3a', pattern: 'dormitorio2' },
+  { type: 'baño',       name: 'Baño Principal',    color: '#1a3a3a', pattern: 'baño' },
+  { type: 'terraza',    name: 'Terraza Exterior',  color: '#2a3a1a', pattern: 'terraza' },
+];
+
+function generateRoomCanvas(type, name, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200; canvas.height = 800;
+  const ctx = canvas.getContext('2d');
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 1200, 800);
+  const baseColor = color || '#1a2030';
+  grad.addColorStop(0, lightenColor(baseColor, 30));
+  grad.addColorStop(1, darkenColor(baseColor, 10));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1200, 800);
+
+  // Floor
+  const floorGrad = ctx.createLinearGradient(0, 550, 0, 800);
+  floorGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  floorGrad.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, 550, 1200, 250);
+
+  // Wall lines (perspective)
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    const x = i * 150;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(600, 400); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, 800); ctx.lineTo(600, 400); ctx.stroke();
+  }
+  for (let i = 0; i <= 5; i++) {
+    const y = i * 100;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1200, y); ctx.stroke();
+  }
+
+  // Room-specific elements
+  drawRoomElements(ctx, type);
+
+  // Window light effect
+  const lightGrad = ctx.createRadialGradient(900, 0, 0, 900, 0, 600);
+  lightGrad.addColorStop(0, 'rgba(255,240,200,0.15)');
+  lightGrad.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = lightGrad;
+  ctx.fillRect(0, 0, 1200, 800);
+
+  // Vignette
+  const vign = ctx.createRadialGradient(600, 400, 200, 600, 400, 700);
+  vign.addColorStop(0, 'rgba(0,0,0,0)');
+  vign.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = vign;
+  ctx.fillRect(0, 0, 1200, 800);
+
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function drawRoomElements(ctx, type) {
+  ctx.save();
+  switch(type) {
+    case 'sala':
+      // Sofa shape
+      ctx.fillStyle = 'rgba(60,45,35,0.8)';
+      ctx.beginPath(); ctx.roundRect(200, 500, 500, 120, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(80,60,45,0.9)';
+      ctx.beginPath(); ctx.roundRect(200, 480, 500, 40, [10,10,0,0]); ctx.fill();
+      // Cushions
+      ctx.fillStyle = 'rgba(200,168,90,0.3)';
+      [240,370,500].forEach(x => { ctx.beginPath(); ctx.roundRect(x, 490, 100, 70, 8); ctx.fill(); });
+      // Coffee table
+      ctx.fillStyle = 'rgba(40,30,20,0.7)';
+      ctx.beginPath(); ctx.roundRect(300, 650, 300, 10, 3); ctx.fill();
+      ctx.fillStyle = 'rgba(50,35,25,0.6)';
+      ctx.beginPath(); ctx.roundRect(350, 620, 200, 35, 5); ctx.fill();
+      // Window
+      ctx.fillStyle = 'rgba(255,240,180,0.15)';
+      ctx.beginPath(); ctx.rect(750, 100, 250, 350); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 3;
+      ctx.strokeRect(750, 100, 250, 350);
+      ctx.beginPath(); ctx.moveTo(875,100); ctx.lineTo(875,450); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(750,275); ctx.lineTo(1000,275); ctx.stroke();
+      break;
+
+    case 'cocina':
+      // Counter
+      ctx.fillStyle = 'rgba(230,220,210,0.85)';
+      ctx.beginPath(); ctx.roundRect(100, 530, 800, 80, 5); ctx.fill();
+      // Cabinets upper
+      ctx.fillStyle = 'rgba(180,160,130,0.7)';
+      [100,230,360,490,620].forEach(x => { ctx.beginPath(); ctx.roundRect(x+5, 250, 120, 200, 5); ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.strokeRect(x+5,250,120,200); });
+      // Stove elements
+      ctx.fillStyle = 'rgba(50,50,50,0.8)';
+      ctx.beginPath(); ctx.rect(280, 520, 200, 20); ctx.fill();
+      [310,350,390,430].forEach(x => { ctx.beginPath(); ctx.arc(x, 510, 18, 0, Math.PI*2); ctx.fillStyle='rgba(40,40,40,0.9)'; ctx.fill(); ctx.strokeStyle='rgba(200,168,90,0.3)'; ctx.lineWidth=2; ctx.stroke(); });
+      break;
+
+    case 'dormitorio': case 'dormitorio2':
+      // Bed frame
+      ctx.fillStyle = 'rgba(80,60,40,0.8)';
+      ctx.beginPath(); ctx.roundRect(300, 400, 500, 280, 8); ctx.fill();
+      // Headboard
+      ctx.fillStyle = 'rgba(100,75,50,0.9)';
+      ctx.beginPath(); ctx.roundRect(280, 350, 540, 80, [8,8,0,0]); ctx.fill();
+      // Pillows
+      ctx.fillStyle = 'rgba(245,240,235,0.9)';
+      ctx.beginPath(); ctx.roundRect(330, 420, 180, 100, 10); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(540, 420, 180, 100, 10); ctx.fill();
+      // Blanket
+      ctx.fillStyle = 'rgba(200,168,90,0.25)';
+      ctx.beginPath(); ctx.roundRect(300, 520, 500, 150, [0,0,8,8]); ctx.fill();
+      // Bedside table
+      ctx.fillStyle = 'rgba(60,45,30,0.7)';
+      ctx.beginPath(); ctx.roundRect(180, 480, 100, 100, 6); ctx.fill();
+      ctx.fillStyle = 'rgba(200,168,90,0.4)';
+      ctx.beginPath(); ctx.arc(230, 460, 25, 0, Math.PI*2); ctx.fill();
+      break;
+
+    case 'baño':
+      // Vanity
+      ctx.fillStyle = 'rgba(200,195,190,0.85)';
+      ctx.beginPath(); ctx.roundRect(200, 550, 400, 80, 5); ctx.fill();
+      // Sink
+      ctx.fillStyle = 'rgba(240,238,235,0.9)';
+      ctx.beginPath(); ctx.ellipse(400, 560, 100, 50, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(200,168,90,0.6)'; ctx.lineWidth=2;
+      ctx.stroke();
+      // Mirror
+      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=3;
+      ctx.strokeRect(250, 300, 300, 230);
+      ctx.fillStyle='rgba(255,255,255,0.05)';
+      ctx.fillRect(251, 301, 298, 228);
+      // Shower
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=2;
+      ctx.strokeRect(800, 200, 280, 400);
+      ctx.fillStyle='rgba(200,230,255,0.08)';
+      ctx.fillRect(800, 200, 280, 400);
+      break;
+
+    case 'comedor':
+      // Table
+      ctx.fillStyle = 'rgba(120,90,55,0.8)';
+      ctx.beginPath(); ctx.roundRect(250, 480, 600, 50, 5); ctx.fill();
+      // Table legs
+      ctx.fillStyle = 'rgba(100,75,45,0.9)';
+      [[270,530],[810,530],[270,620],[810,620]].forEach(([x,y]) => { ctx.beginPath(); ctx.roundRect(x, y, 20, 100, 3); ctx.fill(); });
+      // Chairs
+      ctx.fillStyle = 'rgba(60,45,30,0.8)';
+      [[200,420],[380,420],[560,420],[740,420]].forEach(([x,y]) => {
+        ctx.beginPath(); ctx.roundRect(x, y, 100, 20, 3); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x, y+20, 100, 70, 3); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x, y-80, 100, 100, 5); ctx.fill();
+      });
+      // Chandelier
+      ctx.fillStyle = 'rgba(200,168,90,0.6)';
+      ctx.beginPath(); ctx.arc(560, 150, 60, 0, Math.PI*2); ctx.fill();
+      const chandLight = ctx.createRadialGradient(560, 150, 0, 560, 150, 200);
+      chandLight.addColorStop(0,'rgba(255,220,100,0.3)'); chandLight.addColorStop(1,'rgba(255,220,100,0)');
+      ctx.fillStyle = chandLight;
+      ctx.fillRect(0, 0, 1200, 800);
+      break;
+
+    case 'terraza':
+      // Sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, 400);
+      skyGrad.addColorStop(0, 'rgba(100,150,220,0.5)');
+      skyGrad.addColorStop(1, 'rgba(180,200,240,0.2)');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, 1200, 500);
+      // Plants
+      ctx.fillStyle = 'rgba(50,120,50,0.7)';
+      [[100,450],[1050,450],[150,400],[980,420]].forEach(([x,y]) => {
+        ctx.beginPath(); ctx.arc(x, y, 60, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+30, y-30, 40, 0, Math.PI*2); ctx.fill();
+      });
+      // Outdoor furniture
+      ctx.fillStyle = 'rgba(200,180,140,0.7)';
+      ctx.beginPath(); ctx.roundRect(350, 520, 400, 80, 8); ctx.fill();
+      [380,530,640,680].forEach(x => {
+        ctx.fillStyle = 'rgba(180,160,120,0.8)';
+        ctx.beginPath(); ctx.roundRect(x, 430, 100, 100, 6); ctx.fill();
+      });
+      break;
+  }
+  ctx.restore();
+}
+
+function lightenColor(hex, amount) {
+  const num = parseInt(hex.replace('#',''), 16);
+  const r = Math.min(255, (num>>16) + amount);
+  const g = Math.min(255, ((num>>8)&0xff) + amount);
+  const b = Math.min(255, (num&0xff) + amount);
+  return `rgb(${r},${g},${b})`;
+}
+function darkenColor(hex, amount) {
+  return lightenColor(hex, -amount);
+}
+
+function loadDemo() {
+  rooms = DEMO_ROOMS.map((r, i) => ({
+    id: i,
+    name: r.name,
+    type: r.type,
+    src: generateRoomCanvas(r.type, r.name, r.color),
+    filename: r.pattern + '.jpg',
+    features: getRandomFeatures(r.type),
+    detected: true,
+  }));
+  showPreview();
+  showToast('Modo demo cargado — ' + rooms.length + ' espacios');
+}
+
+// Init: show buttons active
+document.getElementById('btn-toggle-left').classList.add('active');
+document.getElementById('btn-toggle-right').classList.add('active');
+</script>
+</body>
+</html>
