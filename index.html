@@ -1570,6 +1570,9 @@
       <div class="preview-title">Espacios de la propiedad</div>
       <div class="preview-count" id="preview-count">0 fotos</div>
     </div>
+    <button class="btn-pill" style="margin-right:8px" onclick="document.getElementById('file-input').click()">
+      + Agregar más fotos
+    </button>
     <button class="btn-start-tour" onclick="startTour()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
         <polygon points="4,2 14,8 4,14"/>
@@ -1841,37 +1844,51 @@ function getRandomFeatures(type, count = 4) {
 
 function handleFileInput(e) {
   processFiles(Array.from(e.target.files));
+  e.target.value = '';
 }
 
+const MAX_ROOMS = 50;
+
 function processFiles(files) {
-  const imageFiles = files.filter(f => f.type.startsWith('image/')).slice(0, 50);
+  const remaining = MAX_ROOMS - rooms.length;
+  if (remaining <= 0) { showToast('Máximo ' + MAX_ROOMS + ' fotos alcanzado'); return; }
+
+  const imageFiles = files.filter(f => f.type.startsWith('image/')).slice(0, remaining);
   if (imageFiles.length === 0) { showToast('No se encontraron imágenes válidas'); return; }
 
-  rooms = [];
   let loaded = 0;
+  const newRooms = new Array(imageFiles.length);
 
   imageFiles.forEach((file, index) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const type = detectRoomType(file.name);
       const typeInfo = ROOM_TYPES[type];
-      rooms.push({
-        id: index,
-        name: typeInfo.label + ' ' + (rooms.filter(r => r.type === type).length + 1 > 1 ? rooms.filter(r => r.type === type).length + 1 : ''),
+      newRooms[index] = {
+        id: 0,
         type: type,
         src: e.target.result,
         filename: file.name,
         features: getRandomFeatures(type),
         detected: true,
-      });
+        _typeLabel: typeInfo.label,
+      };
 
       loaded++;
       if (loaded === imageFiles.length) {
+        rooms = rooms.concat(newRooms);
         rooms.sort((a, b) => {
           const order = ['sala','comedor','cocina','dormitorio','baño','terraza','estudio','garage','piscina','lavanderia','espacio'];
           return order.indexOf(a.type) - order.indexOf(b.type);
         });
-        rooms.forEach((r, i) => { r.id = i; });
+        const counters = {};
+        rooms.forEach((r, i) => {
+          r.id = i;
+          counters[r.type] = (counters[r.type] || 0) + 1;
+          const count = rooms.filter(x => x.type === r.type).length;
+          const label = r._typeLabel || (ROOM_TYPES[r.type] && ROOM_TYPES[r.type].label) || '';
+          r.name = count > 1 ? (label + ' ' + counters[r.type]) : label;
+        });
         showPreview();
       }
     };
