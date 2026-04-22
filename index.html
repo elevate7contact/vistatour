@@ -78,62 +78,52 @@
       overflow: hidden;
     }
 
-    /* Animated real estate skyline - bottom of screen */
-    .bg-skyline {
+    /* Ambient aurora — premium, subtle, slow */
+    .bg-aurora {
       position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 180px;
+      inset: -20%;
       pointer-events: none;
       z-index: 0;
-      opacity: 0.18;
+      overflow: hidden;
+      filter: blur(80px);
+      opacity: 0.55;
     }
-    .bg-skyline svg { width: 100%; height: 100%; display: block; }
-    .bg-skyline .building {
-      fill: none;
-      stroke: var(--gold);
-      stroke-width: 1.2;
-      animation: building-glow 6s ease-in-out infinite;
+    .bg-aurora::before,
+    .bg-aurora::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      mix-blend-mode: screen;
     }
-    .bg-skyline .building.b2 { animation-delay: -1.5s; }
-    .bg-skyline .building.b3 { animation-delay: -3s; }
-    .bg-skyline .building.b4 { animation-delay: -4.5s; }
-    .bg-skyline .window-light {
-      fill: var(--gold);
-      animation: window-blink 4s ease-in-out infinite;
+    .bg-aurora::before {
+      width: 55vw; height: 55vw;
+      left: -10%; top: 20%;
+      background: radial-gradient(circle, rgba(255,106,26,0.22) 0%, transparent 60%);
+      animation: aurora-drift-a 28s ease-in-out infinite alternate;
     }
-    @keyframes building-glow {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 0.9; }
+    .bg-aurora::after {
+      width: 45vw; height: 45vw;
+      right: -10%; top: -10%;
+      background: radial-gradient(circle, rgba(255,138,76,0.18) 0%, transparent 60%);
+      animation: aurora-drift-b 34s ease-in-out infinite alternate;
     }
-    @keyframes window-blink {
-      0%, 100% { opacity: 0.3; }
-      30% { opacity: 1; }
-      60% { opacity: 0.5; }
+    @keyframes aurora-drift-a {
+      0%   { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(20vw, -10vh) scale(1.15); }
+    }
+    @keyframes aurora-drift-b {
+      0%   { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-15vw, 15vh) scale(1.1); }
     }
 
-    /* Floating orange particles */
-    .bg-particles {
+    /* Subtle grain — adds texture like premium editorial sites */
+    .bg-grain {
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 0;
-      overflow: hidden;
-    }
-    .bg-particles span {
-      position: absolute;
-      display: block;
-      width: 4px; height: 4px;
-      background: var(--gold);
-      border-radius: 50%;
-      opacity: 0;
-      box-shadow: 0 0 10px var(--gold), 0 0 20px rgba(255,106,26,0.3);
-      animation: particle-float 14s linear infinite;
-    }
-    @keyframes particle-float {
-      0% { transform: translateY(100vh) translateX(0) scale(0); opacity: 0; }
-      10% { opacity: 0.6; transform: translateY(90vh) scale(1); }
-      80% { opacity: 0.4; }
-      100% { transform: translateY(-10vh) translateX(40px) scale(0.5); opacity: 0; }
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     }
 
     /* Ensure content stays above bg */
@@ -1893,85 +1883,8 @@
 ═══════════════════════════════════════════════ -->
 <div id="upload-view" class="view">
   <div class="upload-bg"></div>
-
-  <!-- Animated particles (generated via JS below) -->
-  <div class="bg-particles" id="bg-particles"></div>
-
-  <!-- Animated real estate skyline -->
-  <div class="bg-skyline" aria-hidden="true">
-    <svg viewBox="0 0 1600 180" preserveAspectRatio="none">
-      <!-- Building 1 -->
-      <g class="building b1">
-        <rect x="40" y="60" width="90" height="120"/>
-        <rect class="window-light" x="55" y="75" width="8" height="10"/>
-        <rect class="window-light" x="75" y="75" width="8" height="10"/>
-        <rect class="window-light" x="95" y="95" width="8" height="10"/>
-        <rect class="window-light" x="55" y="115" width="8" height="10"/>
-        <rect class="window-light" x="95" y="135" width="8" height="10"/>
-      </g>
-      <!-- Building 2 (taller) -->
-      <g class="building b2">
-        <rect x="160" y="20" width="70" height="160"/>
-        <polygon points="160,20 195,0 230,20"/>
-        <rect class="window-light" x="175" y="40" width="6" height="8"/>
-        <rect class="window-light" x="195" y="40" width="6" height="8"/>
-        <rect class="window-light" x="215" y="60" width="6" height="8"/>
-        <rect class="window-light" x="175" y="80" width="6" height="8"/>
-        <rect class="window-light" x="195" y="110" width="6" height="8"/>
-        <rect class="window-light" x="215" y="130" width="6" height="8"/>
-      </g>
-      <!-- Building 3 (house) -->
-      <g class="building b3">
-        <rect x="270" y="90" width="100" height="90"/>
-        <polygon points="265,90 320,50 375,90"/>
-        <rect class="window-light" x="285" y="105" width="14" height="14"/>
-        <rect class="window-light" x="340" y="105" width="14" height="14"/>
-        <rect x="310" y="135" width="20" height="45"/>
-      </g>
-      <!-- Building 4 (tower) -->
-      <g class="building b4">
-        <rect x="410" y="10" width="60" height="170"/>
-        <rect class="window-light" x="422" y="30" width="6" height="6"/>
-        <rect class="window-light" x="440" y="30" width="6" height="6"/>
-        <rect class="window-light" x="455" y="50" width="6" height="6"/>
-        <rect class="window-light" x="422" y="70" width="6" height="6"/>
-        <rect class="window-light" x="440" y="90" width="6" height="6"/>
-        <rect class="window-light" x="455" y="110" width="6" height="6"/>
-        <rect class="window-light" x="422" y="130" width="6" height="6"/>
-      </g>
-      <!-- Buildings 5-8 (right side, mirrored) -->
-      <g class="building b1">
-        <rect x="1180" y="40" width="80" height="140"/>
-        <rect class="window-light" x="1195" y="55" width="8" height="10"/>
-        <rect class="window-light" x="1215" y="75" width="8" height="10"/>
-        <rect class="window-light" x="1235" y="95" width="8" height="10"/>
-        <rect class="window-light" x="1195" y="125" width="8" height="10"/>
-      </g>
-      <g class="building b3">
-        <rect x="1290" y="100" width="90" height="80"/>
-        <polygon points="1285,100 1335,65 1385,100"/>
-        <rect class="window-light" x="1305" y="115" width="14" height="14"/>
-        <rect class="window-light" x="1355" y="115" width="14" height="14"/>
-        <rect x="1325" y="140" width="18" height="40"/>
-      </g>
-      <g class="building b2">
-        <rect x="1410" y="30" width="60" height="150"/>
-        <rect class="window-light" x="1425" y="50" width="6" height="8"/>
-        <rect class="window-light" x="1445" y="70" width="6" height="8"/>
-        <rect class="window-light" x="1460" y="90" width="6" height="8"/>
-        <rect class="window-light" x="1425" y="120" width="6" height="8"/>
-      </g>
-      <g class="building b4">
-        <rect x="1500" y="0" width="70" height="180"/>
-        <rect class="window-light" x="1515" y="20" width="6" height="6"/>
-        <rect class="window-light" x="1540" y="40" width="6" height="6"/>
-        <rect class="window-light" x="1555" y="60" width="6" height="6"/>
-        <rect class="window-light" x="1515" y="80" width="6" height="6"/>
-        <rect class="window-light" x="1540" y="110" width="6" height="6"/>
-        <rect class="window-light" x="1555" y="140" width="6" height="6"/>
-      </g>
-    </svg>
-  </div>
+  <div class="bg-aurora" aria-hidden="true"></div>
+  <div class="bg-grain" aria-hidden="true"></div>
 
   <div class="upload-logo">
     <div class="logo-mark">
@@ -3007,22 +2920,6 @@ function showToast(msg) {
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 2800);
 }
-
-// ═══════════════════════════════════════════════
-// Floating particles for real estate atmosphere
-(function spawnParticles(){
-  const container = document.getElementById('bg-particles');
-  if (!container) return;
-  const count = 18;
-  for (let i = 0; i < count; i++) {
-    const p = document.createElement('span');
-    p.style.left = Math.random() * 100 + '%';
-    p.style.animationDelay = (Math.random() * 14) + 's';
-    p.style.animationDuration = (10 + Math.random() * 10) + 's';
-    p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
-    container.appendChild(p);
-  }
-})();
 
 // DEMO MODE (if no files uploaded)
 // ═══════════════════════════════════════════════
