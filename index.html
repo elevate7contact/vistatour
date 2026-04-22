@@ -75,19 +75,119 @@
       position: fixed; inset: 0; pointer-events: none;
       background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,106,26,0.07) 0%, transparent 70%),
                   radial-gradient(ellipse 60% 40% at 80% 80%, rgba(255,106,26,0.04) 0%, transparent 60%);
+      overflow: hidden;
+    }
+
+    /* Animated real estate skyline - bottom of screen */
+    .bg-skyline {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 180px;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.18;
+    }
+    .bg-skyline svg { width: 100%; height: 100%; display: block; }
+    .bg-skyline .building {
+      fill: none;
+      stroke: var(--gold);
+      stroke-width: 1.2;
+      animation: building-glow 6s ease-in-out infinite;
+    }
+    .bg-skyline .building.b2 { animation-delay: -1.5s; }
+    .bg-skyline .building.b3 { animation-delay: -3s; }
+    .bg-skyline .building.b4 { animation-delay: -4.5s; }
+    .bg-skyline .window-light {
+      fill: var(--gold);
+      animation: window-blink 4s ease-in-out infinite;
+    }
+    @keyframes building-glow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.9; }
+    }
+    @keyframes window-blink {
+      0%, 100% { opacity: 0.3; }
+      30% { opacity: 1; }
+      60% { opacity: 0.5; }
+    }
+
+    /* Floating orange particles */
+    .bg-particles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .bg-particles span {
+      position: absolute;
+      display: block;
+      width: 4px; height: 4px;
+      background: var(--gold);
+      border-radius: 50%;
+      opacity: 0;
+      box-shadow: 0 0 10px var(--gold), 0 0 20px rgba(255,106,26,0.3);
+      animation: particle-float 14s linear infinite;
+    }
+    @keyframes particle-float {
+      0% { transform: translateY(100vh) translateX(0) scale(0); opacity: 0; }
+      10% { opacity: 0.6; transform: translateY(90vh) scale(1); }
+      80% { opacity: 0.4; }
+      100% { transform: translateY(-10vh) translateX(40px) scale(0.5); opacity: 0; }
+    }
+
+    /* Ensure content stays above bg */
+    .upload-logo, .upload-hero, .upload-container,
+    .showcase-row, .stat-strip, .video-showcase,
+    .section-heading { position: relative; z-index: 2; }
+
+    /* Section heading for "Así se ve tu tour" */
+    .section-heading {
+      text-align: center;
+      max-width: 720px;
+      margin: 56px auto 22px;
+    }
+    .section-heading .eyebrow {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      padding: 5px 14px;
+      background: rgba(255,106,26,0.08);
+      border: 1px solid rgba(255,106,26,0.25);
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    .section-heading h2 {
+      font-family: var(--font-display);
+      font-size: clamp(26px, 3.2vw, 40px);
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+    }
+    .section-heading h2 em { color: var(--gold-light); font-style: italic; }
+    .section-heading p {
+      margin-top: 10px;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 300;
     }
 
     /* Cinematic video banner */
     .video-banner {
       width: 100%;
-      max-width: 1280px;
-      margin: -20px auto 40px;
+      max-width: 1100px;
+      margin: 0 auto 20px;
       position: relative;
       border-radius: 16px;
       overflow: hidden;
       aspect-ratio: 16 / 7;
-      box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,106,26,0.15);
+      box-shadow: 0 30px 80px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,106,26,0.25);
     }
+    .video-banner:hover { box-shadow: 0 30px 80px -20px rgba(255,106,26,0.25), 0 0 0 1px rgba(255,106,26,0.4); }
     .video-banner video {
       width: 100%;
       height: 100%;
@@ -1794,16 +1894,83 @@
 <div id="upload-view" class="view">
   <div class="upload-bg"></div>
 
-  <!-- Cinematic video banner -->
-  <div class="video-banner">
-    <video autoplay muted loop playsinline preload="auto" poster="">
-      <source src="assets/marketing-inmobiliario.mp4" type="video/mp4">
-    </video>
-    <div class="video-banner-overlay">
-      <div class="video-banner-tag">Marketing Inmobiliario · Athora AI</div>
-      <div class="video-banner-title">Vende tus propiedades con <em>tours virtuales</em> que cautivan</div>
-      <div class="video-banner-sub">Tecnología premium para agentes que quieren cerrar más rápido.</div>
-    </div>
+  <!-- Animated particles (generated via JS below) -->
+  <div class="bg-particles" id="bg-particles"></div>
+
+  <!-- Animated real estate skyline -->
+  <div class="bg-skyline" aria-hidden="true">
+    <svg viewBox="0 0 1600 180" preserveAspectRatio="none">
+      <!-- Building 1 -->
+      <g class="building b1">
+        <rect x="40" y="60" width="90" height="120"/>
+        <rect class="window-light" x="55" y="75" width="8" height="10"/>
+        <rect class="window-light" x="75" y="75" width="8" height="10"/>
+        <rect class="window-light" x="95" y="95" width="8" height="10"/>
+        <rect class="window-light" x="55" y="115" width="8" height="10"/>
+        <rect class="window-light" x="95" y="135" width="8" height="10"/>
+      </g>
+      <!-- Building 2 (taller) -->
+      <g class="building b2">
+        <rect x="160" y="20" width="70" height="160"/>
+        <polygon points="160,20 195,0 230,20"/>
+        <rect class="window-light" x="175" y="40" width="6" height="8"/>
+        <rect class="window-light" x="195" y="40" width="6" height="8"/>
+        <rect class="window-light" x="215" y="60" width="6" height="8"/>
+        <rect class="window-light" x="175" y="80" width="6" height="8"/>
+        <rect class="window-light" x="195" y="110" width="6" height="8"/>
+        <rect class="window-light" x="215" y="130" width="6" height="8"/>
+      </g>
+      <!-- Building 3 (house) -->
+      <g class="building b3">
+        <rect x="270" y="90" width="100" height="90"/>
+        <polygon points="265,90 320,50 375,90"/>
+        <rect class="window-light" x="285" y="105" width="14" height="14"/>
+        <rect class="window-light" x="340" y="105" width="14" height="14"/>
+        <rect x="310" y="135" width="20" height="45"/>
+      </g>
+      <!-- Building 4 (tower) -->
+      <g class="building b4">
+        <rect x="410" y="10" width="60" height="170"/>
+        <rect class="window-light" x="422" y="30" width="6" height="6"/>
+        <rect class="window-light" x="440" y="30" width="6" height="6"/>
+        <rect class="window-light" x="455" y="50" width="6" height="6"/>
+        <rect class="window-light" x="422" y="70" width="6" height="6"/>
+        <rect class="window-light" x="440" y="90" width="6" height="6"/>
+        <rect class="window-light" x="455" y="110" width="6" height="6"/>
+        <rect class="window-light" x="422" y="130" width="6" height="6"/>
+      </g>
+      <!-- Buildings 5-8 (right side, mirrored) -->
+      <g class="building b1">
+        <rect x="1180" y="40" width="80" height="140"/>
+        <rect class="window-light" x="1195" y="55" width="8" height="10"/>
+        <rect class="window-light" x="1215" y="75" width="8" height="10"/>
+        <rect class="window-light" x="1235" y="95" width="8" height="10"/>
+        <rect class="window-light" x="1195" y="125" width="8" height="10"/>
+      </g>
+      <g class="building b3">
+        <rect x="1290" y="100" width="90" height="80"/>
+        <polygon points="1285,100 1335,65 1385,100"/>
+        <rect class="window-light" x="1305" y="115" width="14" height="14"/>
+        <rect class="window-light" x="1355" y="115" width="14" height="14"/>
+        <rect x="1325" y="140" width="18" height="40"/>
+      </g>
+      <g class="building b2">
+        <rect x="1410" y="30" width="60" height="150"/>
+        <rect class="window-light" x="1425" y="50" width="6" height="8"/>
+        <rect class="window-light" x="1445" y="70" width="6" height="8"/>
+        <rect class="window-light" x="1460" y="90" width="6" height="8"/>
+        <rect class="window-light" x="1425" y="120" width="6" height="8"/>
+      </g>
+      <g class="building b4">
+        <rect x="1500" y="0" width="70" height="180"/>
+        <rect class="window-light" x="1515" y="20" width="6" height="6"/>
+        <rect class="window-light" x="1540" y="40" width="6" height="6"/>
+        <rect class="window-light" x="1555" y="60" width="6" height="6"/>
+        <rect class="window-light" x="1515" y="80" width="6" height="6"/>
+        <rect class="window-light" x="1540" y="110" width="6" height="6"/>
+        <rect class="window-light" x="1555" y="140" width="6" height="6"/>
+      </g>
+    </svg>
   </div>
 
   <div class="upload-logo">
@@ -1819,6 +1986,24 @@
   <div class="upload-hero">
     <h1>Tu propiedad,<br>en un <em>recorrido</em><br>memorable</h1>
     <p>Sube las fotos de cada espacio y crea un tour virtual inmersivo que tus clientes podrán explorar como si estuvieran ahí.</p>
+  </div>
+
+  <!-- Video example section: "así se ve tu tour" -->
+  <div class="section-heading">
+    <div class="eyebrow">Ejemplo real</div>
+    <h2>Así se ve tu propiedad con <em>VistaTour</em></h2>
+    <p>Mira cómo transformamos fotos estáticas en una experiencia que engancha a los compradores.</p>
+  </div>
+
+  <div class="video-banner">
+    <video autoplay muted loop playsinline preload="auto">
+      <source src="assets/marketing-inmobiliario.mp4" type="video/mp4">
+    </video>
+    <div class="video-banner-overlay">
+      <div class="video-banner-tag">Marketing Inmobiliario · Athora AI</div>
+      <div class="video-banner-title">De fotos planas a <em>tours que venden</em></div>
+      <div class="video-banner-sub">Tecnología premium para agentes que quieren cerrar más rápido.</div>
+    </div>
   </div>
 
   <div class="upload-container">
@@ -2824,6 +3009,21 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════
+// Floating particles for real estate atmosphere
+(function spawnParticles(){
+  const container = document.getElementById('bg-particles');
+  if (!container) return;
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('span');
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDelay = (Math.random() * 14) + 's';
+    p.style.animationDuration = (10 + Math.random() * 10) + 's';
+    p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+    container.appendChild(p);
+  }
+})();
+
 // DEMO MODE (if no files uploaded)
 // ═══════════════════════════════════════════════
 
