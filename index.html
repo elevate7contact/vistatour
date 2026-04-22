@@ -1282,6 +1282,122 @@
 
     .tour-counter strong { color: var(--gold); font-weight: 500; }
 
+    /* ── Análisis de imagen ─────────────────────────── */
+    .analysis-loading {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text-dim);
+      padding: 4px 0;
+    }
+    .analysis-loading::before {
+      content: '';
+      width: 12px; height: 12px;
+      border: 1.5px solid var(--border-light);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .spec-cell {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+    }
+    .spec-cell-label {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+    }
+    .spec-cell-value {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .spec-cell-value.gold { color: var(--gold); }
+
+    .brightness-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .brightness-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      width: 72px;
+      flex-shrink: 0;
+    }
+    .brightness-track {
+      flex: 1;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .brightness-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(to right, #3a3a20, var(--gold-light));
+      transition: width 0.6s ease;
+    }
+    .brightness-pct {
+      font-size: 11px;
+      color: var(--gold);
+      font-weight: 500;
+      width: 32px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .palette-row {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+    .palette-swatch {
+      flex: 1;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.06);
+      transition: transform 0.2s;
+      cursor: default;
+      position: relative;
+    }
+    .palette-swatch:hover { transform: scaleY(1.3); z-index: 1; }
+
+    .insight-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .insight-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .insight-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
     /* ══════════════════════════════════════════════════════════════
        SHARE MODAL
     ══════════════════════════════════════════════════════════════ */
@@ -1721,6 +1837,13 @@
         <div class="right-feature-list" id="right-features"></div>
       </div>
 
+      <div class="right-panel-section" id="analysis-section">
+        <div class="right-panel-section-title">Análisis de imagen</div>
+        <div id="analysis-content">
+          <div class="analysis-loading">Analizando imagen...</div>
+        </div>
+      </div>
+
       <div class="right-nav-section">
         <div class="right-panel-section-title" style="padding: 0 0 8px 0;">Ir a habitación</div>
         <div id="right-nav-btns"></div>
@@ -1870,9 +1993,11 @@ function processFiles(files) {
       type: type,
       src: URL.createObjectURL(file),
       filename: file.name,
+      fileSize: formatBytes(file.size),
       features: getRandomFeatures(type),
       detected: true,
       _typeLabel: typeInfo.label,
+      analysis: null, // se llena async al entrar al tour
     };
   });
 
@@ -2121,6 +2246,10 @@ function renderRoom(index, direction) {
 
   // Right nav buttons
   renderRightNavBtns(index);
+
+  // Image analysis
+  renderImageAnalysis(room);
+  triggerAnalysis(room);
 
   // Hotspots
   renderHotspots(index);
@@ -2658,6 +2787,179 @@ function loadDemo() {
   }));
   showPreview();
   showToast('Modo demo cargado — ' + rooms.length + ' espacios');
+}
+
+// ═══════════════════════════════════════════════
+// IMAGE ANALYSIS ENGINE
+// ═══════════════════════════════════════════════
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function analyzeImagePixels(imgEl) {
+  const SIZE = 120; // muestra a 120×120 — rápido pero preciso
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE; canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(imgEl, 0, 0, SIZE, SIZE);
+
+  let data;
+  try { data = ctx.getImageData(0, 0, SIZE, SIZE).data; }
+  catch(e) { return null; } // CORS bloqueado para URLs externas
+
+  let rSum = 0, gSum = 0, bSum = 0;
+  let satSum = 0;
+  const buckets = {};
+  const total = SIZE * SIZE;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    rSum += r; gSum += g; bSum += b;
+
+    // Saturación HSL simplificada
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    satSum += l > 0 && l < 255 ? (max - min) / (l < 128 ? max + min : 510 - max - min) : 0;
+
+    // Cuantizar a cubos de 40 para paleta dominante
+    const qr = Math.round(r / 40) * 40;
+    const qg = Math.round(g / 40) * 40;
+    const qb = Math.round(b / 40) * 40;
+    const key = `${qr},${qg},${qb}`;
+    buckets[key] = (buckets[key] || 0) + 1;
+  }
+
+  const avgR = rSum / total, avgG = gSum / total, avgB = bSum / total;
+  const brightness = (avgR * 0.299 + avgG * 0.587 + avgB * 0.114) / 255;
+  const warmth = (avgR - avgB) / 255; // positivo = cálido, negativo = frío
+  const saturation = satSum / total;
+
+  // Top 6 colores dominantes
+  const palette = Object.entries(buckets)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([key]) => {
+      const [r, g, b] = key.split(',').map(Number);
+      return `rgb(${r},${g},${b})`;
+    });
+
+  return { brightness, warmth, saturation, palette, avgR, avgG, avgB };
+}
+
+function buildInsights(px, w, h, fileSize) {
+  const insights = [];
+
+  // Iluminación
+  const bPct = Math.round(px.brightness * 100);
+  if (bPct >= 70)      insights.push({ text: 'Excelente iluminación natural', color: '#55c092' });
+  else if (bPct >= 50) insights.push({ text: 'Buena iluminación del espacio', color: '#8ac855' });
+  else if (bPct >= 30) insights.push({ text: 'Iluminación moderada', color: '#c8a855' });
+  else                  insights.push({ text: 'Espacio con luz controlada / nocturna', color: '#8080a0' });
+
+  // Temperatura de color
+  if (px.warmth > 0.12)       insights.push({ text: 'Paleta cálida — madera y tonos tierra', color: '#c87850' });
+  else if (px.warmth < -0.08) insights.push({ text: 'Paleta fría — mármol, acero o concreto', color: '#5090c8' });
+  else                         insights.push({ text: 'Paleta neutra y equilibrada', color: '#909090' });
+
+  // Saturación
+  if (px.saturation > 0.25)      insights.push({ text: 'Colores vivos y decoración llamativa', color: '#c855c0' });
+  else if (px.saturation < 0.08) insights.push({ text: 'Diseño minimalista en tonos neutros', color: '#7090a0' });
+
+  // Resolución
+  const mp = (w * h / 1_000_000).toFixed(1);
+  if (w * h >= 8_000_000)      insights.push({ text: `Alta resolución — ${mp} MP`, color: '#55c092' });
+  else if (w * h >= 2_000_000) insights.push({ text: `Buena resolución — ${mp} MP`, color: '#c8a855' });
+  else                          insights.push({ text: `Resolución estándar — ${mp} MP`, color: '#8080a0' });
+
+  return insights;
+}
+
+function renderImageAnalysis(room) {
+  const container = document.getElementById('analysis-content');
+  if (!container) return;
+
+  if (!room.analysis) {
+    container.innerHTML = '<div class="analysis-loading">Analizando imagen...</div>';
+    return;
+  }
+
+  const a = room.analysis;
+  const bPct = Math.round(a.brightness * 100);
+  const wPct = Math.round(a.width && a.height ? (a.width * a.height / 1_000_000 * 10) / 10 : 0);
+
+  container.innerHTML = `
+    <div class="spec-grid">
+      <div class="spec-cell">
+        <div class="spec-cell-label">Resolución</div>
+        <div class="spec-cell-value gold">${a.width?.toLocaleString()} × ${a.height?.toLocaleString()}</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell-label">Peso</div>
+        <div class="spec-cell-value">${a.fileSize || '—'}</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell-label">Megapíxeles</div>
+        <div class="spec-cell-value">${a.width && a.height ? ((a.width * a.height) / 1_000_000).toFixed(1) + ' MP' : '—'}</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell-label">Proporción</div>
+        <div class="spec-cell-value">${a.ratio || '—'}</div>
+      </div>
+    </div>
+
+    <div class="brightness-row">
+      <div class="brightness-label">Iluminación</div>
+      <div class="brightness-track">
+        <div class="brightness-fill" style="width:${bPct}%"></div>
+      </div>
+      <div class="brightness-pct">${bPct}%</div>
+    </div>
+
+    ${a.palette && a.palette.length ? `
+    <div class="palette-row">
+      ${a.palette.map(c => `<div class="palette-swatch" style="background:${c}" title="${c}"></div>`).join('')}
+    </div>` : ''}
+
+    <div class="insight-list">
+      ${(a.insights || []).map(ins => `
+        <div class="insight-item">
+          <div class="insight-dot" style="background:${ins.color}"></div>
+          ${ins.text}
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+function triggerAnalysis(room) {
+  if (room.analysis) return; // ya analizado
+  const img = new Image();
+  img.onload = () => {
+    const px = analyzeImagePixels(img);
+    if (!px) {
+      room.analysis = { error: true };
+      return;
+    }
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const g = gcd(w, h);
+    room.analysis = {
+      width: w, height: h,
+      fileSize: room.fileSize || null,
+      ratio: `${w/g}:${h/g}`,
+      brightness: px.brightness,
+      warmth: px.warmth,
+      saturation: px.saturation,
+      palette: px.palette,
+      insights: buildInsights(px, w, h, room.fileSize),
+    };
+    // Si esta habitación es la activa, actualiza el panel
+    if (rooms[currentIndex] === room) renderImageAnalysis(room);
+  };
+  img.crossOrigin = 'anonymous';
+  img.src = room.src;
 }
 
 // Init: show buttons active
