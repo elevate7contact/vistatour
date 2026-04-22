@@ -1581,6 +1581,14 @@
       .topbar-property-name { display: none; }
     }
   </style>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_STORAGE_BUCKET } from './supabase-config.js';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    window.supabase = supabase;
+    window.SUPABASE_STORAGE_BUCKET = SUPABASE_STORAGE_BUCKET;
+    console.log('[VistaTour] Supabase client ready', SUPABASE_URL);
+  </script>
 </head>
 <body>
 
