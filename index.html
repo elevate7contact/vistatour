@@ -486,6 +486,40 @@
       display: block;
     }
 
+    .preview-card-add {
+      background: var(--card);
+      border: 2px dashed var(--gold-dim);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 280px;
+      cursor: pointer;
+      transition: var(--trans);
+      color: var(--gold);
+      gap: 10px;
+    }
+    .preview-card-add:hover {
+      border-color: var(--gold);
+      background: var(--gold-glow);
+      transform: translateY(-2px);
+    }
+    .preview-card-add .plus-icon {
+      font-size: 42px;
+      font-weight: 300;
+      line-height: 1;
+    }
+    .preview-card-add .add-label {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+    .preview-card-add .add-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
     .preview-card-body {
       padding: 14px 16px;
     }
@@ -1456,25 +1490,6 @@
   </div>
 
   <div class="upload-container">
-    <!-- URL Import -->
-    <div class="url-import">
-      <div class="url-label">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M6 3H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"/>
-          <path d="M10 1H6v4h4V1z"/>
-        </svg>
-        Importar desde URL de propiedad
-      </div>
-      <div class="url-row">
-        <input type="url" class="url-input" id="url-input" placeholder="https://www.metrocuadrado.com/inmueble/...">
-        <button class="btn-extract" onclick="extractFromUrl()">Extraer imágenes</button>
-      </div>
-      <div class="url-note" id="url-note">Funciona con Metrocuadrado, Fincaraiz, Idealista, y otros portales inmobiliarios.</div>
-      <div class="url-result" id="url-result"></div>
-    </div>
-
-    <div class="upload-divider">o sube las fotos directamente</div>
-
     <!-- Drop Zone -->
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
       <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileInput(event)">
@@ -1977,6 +1992,25 @@ function showPreview() {
 function renderPreviewGrid() {
   const grid = document.getElementById('preview-grid');
   grid.innerHTML = '';
+
+  if (rooms.length < MAX_ROOMS) {
+    const addTile = document.createElement('div');
+    addTile.className = 'preview-card-add';
+    addTile.onclick = () => document.getElementById('file-input').click();
+    addTile.innerHTML = `
+      <div class="plus-icon">+</div>
+      <div class="add-label">Agregar fotos</div>
+      <div class="add-hint">${rooms.length}/${MAX_ROOMS} · click o arrastra</div>
+    `;
+    addTile.addEventListener('dragover', e => { e.preventDefault(); addTile.style.background = 'var(--gold-glow)'; });
+    addTile.addEventListener('dragleave', () => { addTile.style.background = ''; });
+    addTile.addEventListener('drop', e => {
+      e.preventDefault();
+      addTile.style.background = '';
+      processFiles(Array.from(e.dataTransfer.files));
+    });
+    grid.appendChild(addTile);
+  }
 
   rooms.forEach((room, i) => {
     const card = document.createElement('div');
