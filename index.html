@@ -840,23 +840,14 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      transform-origin: center center;
-      animation: kenBurns 20s ease-in-out infinite alternate;
-      transition: opacity 0.6s ease;
-      will-change: transform;
+      object-fit: contain;
+      object-position: center center;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      transition: opacity 0.5s ease;
     }
 
-    @keyframes kenBurns {
-      0%   { transform: scale(1.0) translate(0%, 0%); }
-      20%  { transform: scale(1.06) translate(-1.5%, -1%); }
-      40%  { transform: scale(1.04) translate(1%, -0.5%); }
-      60%  { transform: scale(1.08) translate(-0.5%, 1%); }
-      80%  { transform: scale(1.05) translate(1.5%, -1.5%); }
-      100% { transform: scale(1.0) translate(0%, 0%); }
-    }
-
-    .tour-photo.transitioning { opacity: 0; animation: none; }
+    .tour-photo.transitioning { opacity: 0; }
 
     /* Vignette */
     .tour-vignette {
@@ -1856,44 +1847,36 @@ function processFiles(files) {
   const imageFiles = files.filter(f => f.type.startsWith('image/')).slice(0, remaining);
   if (imageFiles.length === 0) { showToast('No se encontraron imágenes válidas'); return; }
 
-  let loaded = 0;
-  const newRooms = new Array(imageFiles.length);
-
-  imageFiles.forEach((file, index) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const type = detectRoomType(file.name);
-      const typeInfo = ROOM_TYPES[type];
-      newRooms[index] = {
-        id: 0,
-        type: type,
-        src: e.target.result,
-        filename: file.name,
-        features: getRandomFeatures(type),
-        detected: true,
-        _typeLabel: typeInfo.label,
-      };
-
-      loaded++;
-      if (loaded === imageFiles.length) {
-        rooms = rooms.concat(newRooms);
-        rooms.sort((a, b) => {
-          const order = ['sala','comedor','cocina','dormitorio','baño','terraza','estudio','garage','piscina','lavanderia','espacio'];
-          return order.indexOf(a.type) - order.indexOf(b.type);
-        });
-        const counters = {};
-        rooms.forEach((r, i) => {
-          r.id = i;
-          counters[r.type] = (counters[r.type] || 0) + 1;
-          const count = rooms.filter(x => x.type === r.type).length;
-          const label = r._typeLabel || (ROOM_TYPES[r.type] && ROOM_TYPES[r.type].label) || '';
-          r.name = count > 1 ? (label + ' ' + counters[r.type]) : label;
-        });
-        showPreview();
-      }
+  // createObjectURL apunta directo al archivo sin conversión base64
+  // → 0% pérdida de calidad, 0% recompresión, carga instantánea
+  const newRooms = imageFiles.map((file, index) => {
+    const type = detectRoomType(file.name);
+    const typeInfo = ROOM_TYPES[type];
+    return {
+      id: 0,
+      type: type,
+      src: URL.createObjectURL(file),
+      filename: file.name,
+      features: getRandomFeatures(type),
+      detected: true,
+      _typeLabel: typeInfo.label,
     };
-    reader.readAsDataURL(file);
   });
+
+  rooms = rooms.concat(newRooms);
+  rooms.sort((a, b) => {
+    const order = ['sala','comedor','cocina','dormitorio','baño','terraza','estudio','garage','piscina','lavanderia','espacio'];
+    return order.indexOf(a.type) - order.indexOf(b.type);
+  });
+  const counters = {};
+  rooms.forEach((r, i) => {
+    r.id = i;
+    counters[r.type] = (counters[r.type] || 0) + 1;
+    const count = rooms.filter(x => x.type === r.type).length;
+    const label = r._typeLabel || (ROOM_TYPES[r.type] && ROOM_TYPES[r.type].label) || '';
+    r.name = count > 1 ? (label + ' ' + counters[r.type]) : label;
+  });
+  showPreview();
 }
 
 // Drop zone
@@ -2075,9 +2058,6 @@ function renderRoom(index, direction) {
     photoEl.src = room.src;
     photoEl.onload = () => {
       photoEl.classList.remove('transitioning');
-      photoEl.style.animation = 'none';
-      photoEl.offsetHeight; // reflow
-      photoEl.style.animation = '';
     };
   }, direction === 'none' ? 0 : 300);
 
