@@ -2843,6 +2843,300 @@
     });
 
     // ══════════════════════════════════════════════════════════════
+    //  WALKING MODE — first-person node walkthrough
+    // ══════════════════════════════════════════════════════════════
+    const Walk = {
+      nodes: [],
+      currentIndex: 0,
+      visited: new Set(),
+      isAnimating: false,
+      autoplay: false,
+      autoplayTimer: null,
+      layers: { a: null, b: null },
+      activeLayer: 'a',
+      lowQuality: false,
+      dragging: false,
+      dragStart: { x: 0, y: 0 },
+      currentPan: { x: 0, y: 0 },
+      targetPan: { x: 0, y: 0 },
+      rafId: null,
+    };
+
+    function buildWalkNodes() {
+      if (!window.rooms || !rooms.length) return [];
+      return rooms.map((room, i) => ({
+        id: `node-${i}`,
+        index: i,
+        src: room.src,
+        isVideo: !!room.isVideo,
+        name: room.name || (ROOM_TYPES[room.type] && ROOM_TYPES[room.type].label) || `Espacio ${i + 1}`,
+        type: room.type,
+        icon: (ROOM_TYPES[room.type] && ROOM_TYPES[room.type].icon) || '🏠',
+      }));
+    }
+
+    function enterWalkingMode() {
+      if (!window.rooms || rooms.length === 0) {
+        alert('Sube al menos una foto para activar el Modo Caminar.');
+        return;
+      }
+      Walk.nodes = buildWalkNodes();
+      Walk.currentIndex = (typeof currentRoomIndex === 'number' ? currentRoomIndex : 0);
+      Walk.visited = new Set([Walk.currentIndex]);
+      Walk.layers.a = document.getElementById('walk-layer-a');
+      Walk.layers.b = document.getElementById('walk-layer-b');
+      Walk.activeLayer = 'a';
+      Walk.isAnimating = false;
+
+      const view = document.getElementById('walking-view');
+      view.classList.add('active');
+
+      // Render starting node
+      renderWalkNode(Walk.layers.a, Walk.nodes[Walk.currentIndex], true);
+      Walk.layers.a.className = 'walk-layer current idle';
+      Walk.layers.b.className = 'walk-layer next';
+      Walk.layers.b.innerHTML = '';
+
+      updateWalkHUD();
+      preloadNeighbors();
+      attachWalkInputs();
+
+      // reset hint
+      const hint = document.getElementById('walk-hint');
+      if (hint) {
+        hint.style.animation = 'none';
+        void hint.offsetWidth;
+        hint.style.animation = '';
+      }
+    }
+
+    function exitWalkingMode() {
+      const view = document.getElementById('walking-view');
+      view.classList.remove('active');
+      stopWalkAutoplay();
+      detachWalkInputs();
+      if (Walk.rafId) cancelAnimationFrame(Walk.rafId);
+    }
+
+    function renderWalkNode(layerEl, node, isInitial) {
+      if (!node) return;
+      layerEl.innerHTML = '';
+      let media;
+      if (node.isVideo) {
+        media = document.createElement('video');
+        media.src = node.src;
+        media.muted = true;
+        media.autoplay = true;
+        media.loop = true;
+        media.playsInline = true;
+      } else {
+        media = document.createElement('img');
+        media.src = node.src;
+        media.alt = node.name;
+        media.loading = isInitial ? 'eager' : 'lazy';
+      }
+      layerEl.appendChild(media);
+    }
+
+    function updateWalkHUD() {
+      const node = Walk.nodes[Walk.currentIndex];
+      if (!node) return;
+      document.getElementById('walk-name').textContent = node.name;
+      document.getElementById('walk-eyebrow').textContent = `${node.icon}  Espacio ${Walk.currentIndex + 1} de ${Walk.nodes.length}`;
+      document.getElementById('walk-progress-fill').style.width = `${((Walk.currentIndex + 1) / Walk.nodes.length) * 100}%`;
+
+      // Back button visibility
+      document.getElementById('walk-back').classList.toggle('visible', Walk.currentIndex > 0);
+      // Forward hotspot visibility
+      document.getElementById('walk-hotspot').style.display = (Walk.currentIndex < Walk.nodes.length - 1) ? 'flex' : 'none';
+
+      // Rebuild minimap
+      const mm = document.getElementById('walk-minimap');
+      mm.innerHTML = '';
+      Walk.nodes.forEach((n, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'walk-dot' + (i === Walk.currentIndex ? ' active' : (Walk.visited.has(i) ? ' visited' : ''));
+        dot.title = n.name;
+        dot.onclick = () => walkJumpTo(i);
+        mm.appendChild(dot);
+      });
+    }
+
+    function preloadNeighbors() {
+      const idxs = [Walk.currentIndex - 1, Walk.currentIndex + 1].filter(i => i >= 0 && i < Walk.nodes.length);
+      idxs.forEach(i => {
+        const n = Walk.nodes[i];
+        if (!n || n.isVideo) return;
+        const img = new Image();
+        img.src = n.src;
+      });
+    }
+
+    function walkForward() {
+      if (Walk.isAnimating) return;
+      if (Walk.currentIndex >= Walk.nodes.length - 1) {
+        stopWalkAutoplay();
+        return;
+      }
+      transitionToIndex(Walk.currentIndex + 1, 'forward');
+    }
+
+    function walkBackward() {
+      if (Walk.isAnimating || Walk.currentIndex <= 0) return;
+      transitionToIndex(Walk.currentIndex - 1, 'backward');
+    }
+
+    function walkJumpTo(i) {
+      if (Walk.isAnimating || i === Walk.currentIndex) return;
+      const dir = i > Walk.currentIndex ? 'forward' : 'backward';
+      transitionToIndex(i, dir);
+    }
+
+    function transitionToIndex(nextIndex, direction) {
+      Walk.isAnimating = true;
+      const activeKey = Walk.activeLayer;
+      const inactiveKey = activeKey === 'a' ? 'b' : 'a';
+      const activeEl = Walk.layers[activeKey];
+      const inactiveEl = Walk.layers[inactiveKey];
+
+      // Render next node into inactive layer
+      renderWalkNode(inactiveEl, Walk.nodes[nextIndex], false);
+
+      // Reset pan transforms
+      activeEl.style.transform = '';
+      inactiveEl.style.transform = '';
+      Walk.currentPan = { x: 0, y: 0 };
+      Walk.targetPan = { x: 0, y: 0 };
+
+      // Animation classes
+      activeEl.className = 'walk-layer current ' + (Walk.lowQuality ? 'quick-out' : (direction === 'forward' ? 'anim-out' : 'anim-back-out'));
+      inactiveEl.className = 'walk-layer next ' + (Walk.lowQuality ? 'quick-in' : (direction === 'forward' ? 'anim-in' : 'anim-back-in'));
+      inactiveEl.style.opacity = '1';
+
+      const duration = Walk.lowQuality ? 230 : 660;
+      setTimeout(() => {
+        // Swap layers
+        activeEl.className = 'walk-layer next';
+        activeEl.style.opacity = '0';
+        activeEl.innerHTML = '';
+        inactiveEl.className = 'walk-layer current idle';
+
+        Walk.activeLayer = inactiveKey;
+        Walk.currentIndex = nextIndex;
+        Walk.visited.add(nextIndex);
+        Walk.isAnimating = false;
+
+        updateWalkHUD();
+        preloadNeighbors();
+
+        // Track interaction analytics (local)
+        try {
+          const stats = JSON.parse(localStorage.getItem('walk_views') || '{}');
+          stats[Walk.nodes[nextIndex].id] = (stats[Walk.nodes[nextIndex].id] || 0) + 1;
+          localStorage.setItem('walk_views', JSON.stringify(stats));
+        } catch (e) {}
+      }, duration);
+    }
+
+    function toggleWalkAutoplay() {
+      Walk.autoplay = !Walk.autoplay;
+      const btn = document.getElementById('walk-autoplay');
+      if (Walk.autoplay) {
+        btn.style.background = 'rgba(255,138,60,0.3)';
+        btn.style.borderColor = 'rgba(255,180,100,0.65)';
+        scheduleAutoplayStep();
+      } else {
+        stopWalkAutoplay();
+      }
+    }
+    function stopWalkAutoplay() {
+      Walk.autoplay = false;
+      if (Walk.autoplayTimer) clearTimeout(Walk.autoplayTimer);
+      Walk.autoplayTimer = null;
+      const btn = document.getElementById('walk-autoplay');
+      if (btn) {
+        btn.style.background = '';
+        btn.style.borderColor = '';
+      }
+    }
+    function scheduleAutoplayStep() {
+      if (!Walk.autoplay) return;
+      Walk.autoplayTimer = setTimeout(() => {
+        if (Walk.currentIndex < Walk.nodes.length - 1) {
+          walkForward();
+          scheduleAutoplayStep();
+        } else {
+          stopWalkAutoplay();
+        }
+      }, 3200);
+    }
+
+    // ── Drag to look (fake parallax pan) + click to advance ─────────
+    function attachWalkInputs() {
+      const stage = document.getElementById('walk-stage');
+      stage.addEventListener('pointerdown', onWalkDown);
+      window.addEventListener('pointermove', onWalkMove);
+      window.addEventListener('pointerup', onWalkUp);
+      window.addEventListener('keydown', onWalkKey);
+      startPanLoop();
+    }
+    function detachWalkInputs() {
+      const stage = document.getElementById('walk-stage');
+      stage.removeEventListener('pointerdown', onWalkDown);
+      window.removeEventListener('pointermove', onWalkMove);
+      window.removeEventListener('pointerup', onWalkUp);
+      window.removeEventListener('keydown', onWalkKey);
+    }
+    function onWalkDown(e) {
+      // Ignore clicks on UI controls
+      if (e.target.closest('.walk-topbar, .walk-hud, .walk-hotspot, .walk-back-btn')) return;
+      Walk.dragging = true;
+      Walk.dragStart = { x: e.clientX, y: e.clientY };
+      Walk.dragMoved = false;
+      Walk._dragStartPan = { ...Walk.targetPan };
+    }
+    function onWalkMove(e) {
+      if (!Walk.dragging) return;
+      const dx = e.clientX - Walk.dragStart.x;
+      const dy = e.clientY - Walk.dragStart.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) Walk.dragMoved = true;
+      Walk.targetPan.x = Math.max(-60, Math.min(60, Walk._dragStartPan.x + dx * 0.35));
+      Walk.targetPan.y = Math.max(-30, Math.min(30, Walk._dragStartPan.y + dy * 0.25));
+    }
+    function onWalkUp(e) {
+      if (!Walk.dragging) return;
+      const wasDragging = Walk.dragMoved;
+      Walk.dragging = false;
+      // If it was a click (not drag) on stage → advance
+      if (!wasDragging && e.target.closest('#walk-stage') && !e.target.closest('.walk-topbar, .walk-hud, .walk-back-btn')) {
+        walkForward();
+      }
+      // Ease pan back to center after release
+      Walk.targetPan = { x: 0, y: 0 };
+    }
+    function onWalkKey(e) {
+      if (!document.getElementById('walking-view').classList.contains('active')) return;
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); walkForward(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'Backspace')          { e.preventDefault(); walkBackward(); }
+      else if (e.key === 'Escape')                                       { e.preventDefault(); exitWalkingMode(); }
+    }
+    function startPanLoop() {
+      function loop() {
+        Walk.currentPan.x += (Walk.targetPan.x - Walk.currentPan.x) * 0.12;
+        Walk.currentPan.y += (Walk.targetPan.y - Walk.currentPan.y) * 0.12;
+        const el = Walk.layers[Walk.activeLayer];
+        if (el && !Walk.isAnimating) {
+          const media = el.querySelector('img, video');
+          if (media) {
+            media.style.transform = `translate(${Walk.currentPan.x}px, ${Walk.currentPan.y}px) scale(1.05)`;
+          }
+        }
+        Walk.rafId = requestAnimationFrame(loop);
+      }
+      loop();
+    }
+
+    // ══════════════════════════════════════════════════════════════
     //  PARALLAX SCENE — mouse tilt + scroll push-in
     // ══════════════════════════════════════════════════════════════
     function initParallaxScene() {
@@ -3151,6 +3445,256 @@
 <!-- ═══════════════════════════════════════════════
      TOUR VIEW
 ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     WALKING MODE — first-person node-based walkthrough (MVP)
+═══════════════════════════════════════════════════════════════════ -->
+<style>
+  #walking-view {
+    position: fixed; inset: 0; z-index: 9000;
+    background: #000;
+    display: none;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #walking-view.active { display: block; }
+  .walk-stage {
+    position: absolute; inset: 0;
+    perspective: 1400px;
+    perspective-origin: 50% 50%;
+  }
+  .walk-layer {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    backface-visibility: hidden;
+    will-change: transform, filter, opacity;
+  }
+  .walk-layer img, .walk-layer video {
+    width: 115%; height: 115%;
+    object-fit: cover;
+    filter: contrast(1.08) saturate(1.12) brightness(1.02);
+    transform-origin: 50% 50%;
+    will-change: transform, filter;
+    transition: transform 0.12s ease-out;
+  }
+  .walk-layer.current { z-index: 2; }
+  .walk-layer.next    { z-index: 1; opacity: 0; }
+
+  /* Forward transition: zoom + blur + fade */
+  .walk-layer.anim-out img, .walk-layer.anim-out video {
+    animation: walk-forward-out 650ms cubic-bezier(.45,.05,.35,1) forwards;
+  }
+  .walk-layer.anim-in img, .walk-layer.anim-in video {
+    animation: walk-forward-in 650ms cubic-bezier(.45,.05,.35,1) forwards;
+  }
+  @keyframes walk-forward-out {
+    0%   { transform: scale(1);    filter: blur(0) contrast(1.08) saturate(1.12) brightness(1.02); }
+    100% { transform: scale(1.35); filter: blur(10px) contrast(1.08) saturate(1.12) brightness(1.02); }
+  }
+  @keyframes walk-forward-in {
+    0%   { transform: scale(0.82); filter: blur(14px) contrast(1.08) saturate(1.12) brightness(0.8); opacity: 0; }
+    60%  { opacity: 1; }
+    100% { transform: scale(1);    filter: blur(0)    contrast(1.08) saturate(1.12) brightness(1.02); opacity: 1; }
+  }
+  /* Backward transition (reversed) */
+  .walk-layer.anim-back-out img, .walk-layer.anim-back-out video {
+    animation: walk-back-out 600ms cubic-bezier(.45,.05,.35,1) forwards;
+  }
+  .walk-layer.anim-back-in img, .walk-layer.anim-back-in video {
+    animation: walk-back-in 600ms cubic-bezier(.45,.05,.35,1) forwards;
+  }
+  @keyframes walk-back-out {
+    0%   { transform: scale(1);    filter: blur(0) contrast(1.08) saturate(1.12) brightness(1.02); opacity: 1; }
+    100% { transform: scale(0.78); filter: blur(10px) contrast(1.08) saturate(1.12) brightness(0.85); opacity: 0; }
+  }
+  @keyframes walk-back-in {
+    0%   { transform: scale(1.3);  filter: blur(12px); opacity: 0; }
+    100% { transform: scale(1);    filter: blur(0);    opacity: 1; }
+  }
+  /* Low-quality fallback: fast cut */
+  .walk-layer.quick-out img, .walk-layer.quick-out video { animation: walk-quick-out 220ms ease-out forwards; }
+  .walk-layer.quick-in img, .walk-layer.quick-in video  { animation: walk-quick-in 220ms ease-out forwards; }
+  @keyframes walk-quick-out { to { opacity: 0; transform: scale(1.05); } }
+  @keyframes walk-quick-in  { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+  /* Idle ken-burns pulse */
+  .walk-layer.current.idle img, .walk-layer.current.idle video {
+    animation: walk-idle 12s ease-in-out infinite alternate;
+  }
+  @keyframes walk-idle {
+    0%   { transform: scale(1)    translate(0,0); }
+    100% { transform: scale(1.05) translate(-1%, -0.5%); }
+  }
+
+  /* Forward hotspot (pulsing ring) */
+  .walk-hotspot {
+    position: absolute;
+    left: 50%; top: 58%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,138,60,0.25) 0%, rgba(255,138,60,0) 70%);
+    cursor: pointer; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    animation: hotspot-pulse 2.2s ease-in-out infinite;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .walk-hotspot::before {
+    content: '';
+    position: absolute; inset: 28px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,200,140,0.75);
+    box-shadow: 0 0 24px rgba(255,138,60,0.5), inset 0 0 16px rgba(255,138,60,0.25);
+  }
+  .walk-hotspot svg { width: 32px; height: 32px; color: #fff; position: relative; z-index: 2; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)); }
+  @keyframes hotspot-pulse {
+    0%,100% { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+    50%     { transform: translate(-50%, -50%) scale(1.12); opacity: 0.85; }
+  }
+
+  /* Top bar */
+  .walk-topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+    padding: 18px 22px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0));
+    color: #fff;
+    pointer-events: none;
+  }
+  .walk-topbar > * { pointer-events: auto; }
+  .walk-room-label {
+    display: flex; flex-direction: column; gap: 2px;
+    background: rgba(10,6,4,0.55); backdrop-filter: blur(10px);
+    padding: 9px 16px; border-radius: 10px;
+    border: 1px solid rgba(255,180,100,0.25);
+    max-width: 64%;
+  }
+  .walk-room-label .eyebrow { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #f5c87c; font-weight: 600; }
+  .walk-room-label .name    { font-family: 'Cormorant Garamond', serif; font-size: 20px; color: #fff; line-height: 1.1; }
+  .walk-controls { display: flex; gap: 10px; }
+  .walk-btn {
+    background: rgba(10,6,4,0.55); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,180,100,0.28); color: #fff;
+    padding: 9px 14px; border-radius: 10px;
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .walk-btn:hover { background: rgba(255,138,60,0.18); border-color: rgba(255,180,100,0.55); }
+  .walk-btn svg { width: 14px; height: 14px; }
+  .walk-btn.danger { border-color: rgba(255,100,100,0.35); }
+  .walk-btn.danger:hover { background: rgba(255,80,80,0.2); }
+
+  /* Bottom HUD */
+  .walk-hud {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 30;
+    padding: 18px 22px 22px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .walk-progress {
+    height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden;
+  }
+  .walk-progress-fill {
+    height: 100%; background: linear-gradient(90deg, #ff6a1a, #ffb060);
+    width: 0%; transition: width 0.5s cubic-bezier(.4,.0,.2,1);
+  }
+  .walk-minimap {
+    display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+  }
+  .walk-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    cursor: pointer; transition: all 0.2s;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .walk-dot:hover { background: rgba(255,180,100,0.7); transform: scale(1.3); }
+  .walk-dot.active { background: linear-gradient(135deg, #ff8a3c, #ff6a1a); width: 24px; border-radius: 5px; }
+  .walk-dot.visited { background: rgba(255,180,100,0.45); }
+
+  .walk-back-btn {
+    position: absolute; bottom: 80px; left: 22px; z-index: 30;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: rgba(10,6,4,0.65); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,180,100,0.35); color: #fff;
+    cursor: pointer; display: none; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .walk-back-btn.visible { display: flex; }
+  .walk-back-btn:hover { background: rgba(255,138,60,0.22); transform: translateX(-2px); }
+  .walk-back-btn svg { width: 20px; height: 20px; }
+
+  /* Hint overlay (first-run) */
+  .walk-hint {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    padding: 14px 22px; border-radius: 12px;
+    background: rgba(10,6,4,0.72); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,180,100,0.35); color: #fff;
+    font-size: 13px; text-align: center; z-index: 40;
+    pointer-events: none;
+    animation: walk-hint-fade 4s ease-in-out forwards;
+  }
+  @keyframes walk-hint-fade {
+    0%   { opacity: 0; transform: translate(-50%, -40%); }
+    20%  { opacity: 1; transform: translate(-50%, -50%); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @media (max-width: 700px) {
+    .walk-room-label .name { font-size: 16px; }
+    .walk-btn span { display: none; }
+    .walk-hotspot { width: 90px; height: 90px; }
+  }
+</style>
+
+<div id="walking-view">
+  <div class="walk-stage" id="walk-stage">
+    <div class="walk-layer current" id="walk-layer-a"></div>
+    <div class="walk-layer next" id="walk-layer-b"></div>
+
+    <!-- Forward hotspot -->
+    <div class="walk-hotspot" id="walk-hotspot" onclick="walkForward()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 5v14M5 12l7-7 7 7"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <div class="walk-topbar">
+    <div class="walk-room-label">
+      <span class="eyebrow" id="walk-eyebrow">Espacio 1 de 1</span>
+      <span class="name" id="walk-name">—</span>
+    </div>
+    <div class="walk-controls">
+      <button class="walk-btn" id="walk-autoplay" onclick="toggleWalkAutoplay()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="4,2 14,8 4,14"/></svg>
+        <span>Recorrido guiado</span>
+      </button>
+      <button class="walk-btn danger" onclick="exitWalkingMode()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        <span>Salir</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Back button -->
+  <button class="walk-back-btn" id="walk-back" onclick="walkBackward()" title="Atrás">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M19 12H5M12 5l-7 7 7 7"/>
+    </svg>
+  </button>
+
+  <!-- Bottom HUD: minimap + progress -->
+  <div class="walk-hud">
+    <div class="walk-minimap" id="walk-minimap"></div>
+    <div class="walk-progress"><div class="walk-progress-fill" id="walk-progress-fill"></div></div>
+  </div>
+
+  <!-- First-run hint -->
+  <div class="walk-hint" id="walk-hint">Click para avanzar · arrastra para mirar alrededor</div>
+</div>
+
 <div id="tour-view" class="view hidden">
 
   <!-- Top Bar -->
@@ -3198,6 +3742,13 @@
           <line x1="2" y1="8" x2="14" y2="8"/>
         </svg>
         Ver en 360°
+      </button>
+      <button class="btn-360" onclick="enterWalkingMode()" title="Modo caminar" style="background: linear-gradient(135deg, #ff8a3c, #ff6a1a);">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="3" r="1.5"/>
+          <path d="M8 5v4l-2 5M8 9l2 5M6 7l-2 1M10 7l2 1"/>
+        </svg>
+        Modo caminar
       </button>
       <div class="btn-separator"></div>
       <button class="btn-exit" onclick="exitTour()">
