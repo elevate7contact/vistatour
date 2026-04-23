@@ -3300,6 +3300,15 @@
       document.getElementById('preview-view').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
+
+    // Expose Walking Mode to global scope (onclick handlers need it)
+    window.enterWalkingMode = enterWalkingMode;
+    window.exitWalkingMode  = exitWalkingMode;
+    window.walkForward      = walkForward;
+    window.walkBackward     = walkBackward;
+    window.walkJumpTo       = walkJumpTo;
+    window.toggleWalkAutoplay = toggleWalkAutoplay;
+    window.Walk             = Walk;
   })();
   </script>
 
