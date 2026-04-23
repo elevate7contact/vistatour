@@ -883,6 +883,35 @@
       text-transform: uppercase;
     }
 
+    .preview-card-delete {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: rgba(220,53,69,0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50%;
+      width: 28px; height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 400;
+      color: #fff;
+      cursor: pointer;
+      padding: 0;
+      z-index: 3;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .preview-card-delete:hover {
+      background: rgba(220,53,69,1);
+      transform: scale(1.1);
+    }
+    .preview-card-delete + .preview-card-detected,
+    .preview-card-detected + .preview-card-delete {
+      right: 46px;
+    }
+
     /* ══════════════════════════════════════════════════════════════
        TOUR VIEW
     ══════════════════════════════════════════════════════════════ */
@@ -2364,7 +2393,6 @@
           <div class="chip-group" id="lf-chips">
             <div class="chip" data-val="Amoblado">Amoblado</div>
             <div class="chip" data-val="Vista panorámica">Vista panorámica</div>
-            <div class="chip" data-val="Terraza">Terraza</div>
             <div class="chip" data-val="Piscina">Piscina</div>
             <div class="chip" data-val="Gimnasio">Gimnasio</div>
             <div class="chip" data-val="Zona BBQ">Zona BBQ</div>
@@ -3347,6 +3375,7 @@ function renderPreviewGrid() {
     card.innerHTML = `
       <div class="preview-card-order">${i + 1}</div>
       ${room.detected ? '<div class="preview-card-detected">Auto-detectado</div>' : ''}
+      <button class="preview-card-delete" onclick="deleteRoom(${i}); event.stopPropagation();" title="Eliminar foto">×</button>
       ${room.isVideo
         ? `<video class="preview-card-img" src="${room.src}" muted autoplay loop playsinline></video>
            <div class="preview-card-video-badge">▶ Video</div>`
@@ -3368,6 +3397,23 @@ function renderPreviewGrid() {
     `;
     grid.appendChild(card);
   });
+}
+
+function deleteRoom(index) {
+  if (index < 0 || index >= rooms.length) return;
+  const room = rooms[index];
+  if (room && room.src && room.src.startsWith('blob:')) {
+    try { URL.revokeObjectURL(room.src); } catch (e) {}
+  }
+  rooms.splice(index, 1);
+  const countEl = document.getElementById('preview-count');
+  if (countEl) countEl.textContent = rooms.length + ' foto' + (rooms.length !== 1 ? 's' : '');
+  if (rooms.length === 0) {
+    document.getElementById('preview-view').classList.add('hidden');
+    document.getElementById('upload-view').classList.remove('hidden');
+    return;
+  }
+  renderPreviewGrid();
 }
 
 function changeRoomType(index, newType) {
