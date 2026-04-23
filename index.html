@@ -1926,12 +1926,24 @@
       flex: 1;
       position: relative;
       overflow: hidden;
+      background: #0a0a0a;
       user-select: none;
       -webkit-user-select: none;
+      cursor: default;
     }
 
-    #viewer360-canvas-wrap canvas {
-      display: block;
+    /* Elemento media (img o video) dentro del visor */
+    .v360-media {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform-origin: center center;
+      transition: opacity 0.4s ease;
+      will-change: transform, opacity;
+      pointer-events: none;
+      -webkit-user-drag: none;
     }
 
     #viewer360-loading {
@@ -1974,14 +1986,8 @@
       font-size: 11px;
       color: var(--text-muted);
       pointer-events: none;
-      animation: fadeHint 4s ease forwards;
       white-space: nowrap;
-    }
-
-    @keyframes fadeHint {
-      0%   { opacity: 1; }
-      60%  { opacity: 1; }
-      100% { opacity: 0; }
+      transition: opacity 1s ease;
     }
 
     /* Contador de sala */
@@ -2960,8 +2966,8 @@
     </div>
   </div>
 
-  <!-- Canvas Three.js + flechas de navegación -->
-  <div id="viewer360-canvas-wrap" style="position:relative;flex:1;">
+  <!-- Área de la imagen + flechas de navegación -->
+  <div id="viewer360-canvas-wrap">
     <!-- Flecha izquierda -->
     <button id="viewer360-prev" class="viewer360-nav-arrow left" onclick="Viewer360.prevRoom()" title="Espacio anterior">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -2977,9 +2983,9 @@
     <!-- Loading -->
     <div id="viewer360-loading" style="display:flex;">
       <div class="viewer360-spinner"></div>
-      <span>Cargando vista 360°…</span>
+      <span>Cargando imagen…</span>
     </div>
-    <!-- Instrucciones (fade out automático) -->
+    <!-- Instrucciones (fade out automático vía JS) -->
     <div id="viewer360-hint"></div>
   </div>
 
@@ -4163,27 +4169,7 @@ function open360() {
 }
 </script>
 
-<!-- Three.js — carga lazy solo cuando se necesita el visor -->
-<script>
-(function() {
-  let loaded = false;
-  const origOpen = window.open360;
-  // Parche: la primera llamada carga Three.js y luego abre el visor
-  window.open360 = function() {
-    if (loaded) { origOpen && origOpen(); return; }
-    const s = document.createElement('script');
-    s.src = 'assets/lib/three.min.js';
-    s.onload = () => {
-      loaded = true;
-      const v = document.createElement('script');
-      v.src = 'assets/viewer360.js';
-      v.onload = () => { origOpen && origOpen(); };
-      document.head.appendChild(v);
-    };
-    s.onerror = () => showToast('Error al cargar el visor 3D.');
-    document.head.appendChild(s);
-  };
-})();
-</script>
+<!-- Visor de parallax — sin dependencias externas -->
+<script src="assets/viewer360.js"></script>
 </body>
 </html>
