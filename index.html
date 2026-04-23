@@ -952,15 +952,17 @@
 
     .preview-card-detected {
       position: absolute;
-      top: 10px; right: 10px;
-      background: rgba(85,192,146,0.15);
-      border: 1px solid rgba(85,192,146,0.3);
+      top: 10px; left: 10px;
+      background: rgba(232,195,122,0.18);
+      border: 1px solid rgba(232,195,122,0.38);
       border-radius: 4px;
       padding: 3px 8px;
       font-size: 10px;
-      color: var(--green);
+      color: var(--gold-light);
       letter-spacing: 0.05em;
       text-transform: uppercase;
+      z-index: 2;
+      pointer-events: none;
     }
 
     .preview-card-delete {
@@ -986,10 +988,6 @@
     .preview-card-delete:hover {
       background: rgba(220,53,69,1);
       transform: scale(1.1);
-    }
-    .preview-card-delete + .preview-card-detected,
-    .preview-card-detected + .preview-card-delete {
-      right: 46px;
     }
 
     /* ══════════════════════════════════════════════════════════════
