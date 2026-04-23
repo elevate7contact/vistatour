@@ -2299,29 +2299,33 @@
       try {
         if (!window.supabase) throw new Error('Supabase no cargado');
 
-        // 1) Subir fotos a Supabase Storage (bucket 'inmobiliarias')
+        // Fotos ya están en _pending/ . Ahora las movemos a la carpeta final con el slug de la inmobiliaria.
+        const pendingPaths = Array.isArray(window.__uploadedPaths) ? window.__uploadedPaths : [];
         const slug = data.inmobiliaria
           .toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        const fecha = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        const filesToUpload = (typeof rooms !== 'undefined' ? rooms : []).filter(r => r && r.file);
-        const uploadedPaths = [];
-        for (let i = 0; i < filesToUpload.length; i++) {
-          const f = filesToUpload[i].file;
-          const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+          .replace(/^-+|-+$/g, '') || 'sin-nombre';
+        const fecha = new Date().toISOString().slice(0, 10);
+        const finalPaths = [];
+        for (let i = 0; i < pendingPaths.length; i++) {
+          const from = pendingPaths[i];
+          const ext = (from.split('.').pop() || 'jpg').toLowerCase();
           const n = String(i + 1).padStart(3, '0');
-          const path = `${slug}/${fecha}/foto_${n}.${ext}`;
-          const { error: upErr } = await window.supabase
+          const to = `${slug}/${fecha}/${Date.now()}_foto_${n}.${ext}`;
+          const { error: mvErr } = await window.supabase
             .storage.from('inmobiliarias')
-            .upload(path, f, { upsert: true, contentType: f.type || 'image/jpeg' });
-          if (upErr) throw upErr;
-          uploadedPaths.push(path);
+            .move(from, to);
+          if (mvErr) {
+            // Si falla el move, al menos dejamos el path pending para no perder la foto
+            console.warn('No se pudo mover', from, '->', to, mvErr);
+            finalPaths.push(from);
+          } else {
+            finalPaths.push(to);
+          }
         }
-        data.image_paths = uploadedPaths;
+        data.image_paths = finalPaths;
 
-        // 2) Insertar fila con paths de las fotos
         const { error } = await window.supabase
           .from('leads_inmobiliarias')
           .insert([data]);
@@ -2338,33 +2342,99 @@
       } catch (err) {
         console.error('[VistaTour lead]', err);
         msg.className = 'lead-msg err';
-        msg.textContent = 'No pudimos guardar tu info. Escríbenos a hola@athora.ai o WhatsApp +57 300 000 0000.';
+        const detail = (err && (err.message || err.error_description || err.error || err.statusText)) || 'Error desconocido';
+        msg.textContent = 'No pudimos guardar tu info (' + detail + '). Escríbenos a hola@athora.ai.';
       } finally {
         btn.disabled = false;
         btn.textContent = 'Enviar información y generar mi tour';
       }
     });
 
-    // Move the lead-form-wrap into the preview-view slot on load,
-    // so it only appears after the user has uploaded photos.
+    // Mueve el form-wrap al form-view (pantalla separada) al cargar.
     document.addEventListener('DOMContentLoaded', () => {
-      const slot = document.getElementById('lead-form-slot');
+      const slot = document.getElementById('form-slot');
       const formWrap = document.getElementById('lead-form-wrap');
       if (slot && formWrap && formWrap.parentNode !== slot) {
         slot.appendChild(formWrap);
+        formWrap.style.display = 'block';
       }
     });
 
-    // Global helper: reveal the lead form inside preview-view and scroll to it
-    window.revealLeadForm = function () {
-      const formWrap = document.getElementById('lead-form-wrap');
-      if (!formWrap) return;
-      formWrap.style.display = 'block';
-      setTimeout(() => {
-        formWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        const firstInput = document.getElementById('lf-inmob');
-        if (firstInput) firstInput.focus({ preventScroll: true });
-      }, 80);
+    // Sube fotos a Supabase Storage y transiciona a la vista del formulario.
+    window.uploadAndContinue = async function () {
+      const btn = document.getElementById('btn-upload-continue');
+      const label = document.getElementById('btn-upload-label');
+      const progress = document.getElementById('upload-progress');
+      const progressText = document.getElementById('upload-progress-text');
+      const progressBar = document.getElementById('upload-progress-bar');
+
+      const files = (typeof rooms !== 'undefined' ? rooms : []).filter(r => r && r.file);
+      if (files.length === 0) {
+        alert('Sube al menos una foto antes de continuar.');
+        return;
+      }
+      if (!window.supabase) {
+        alert('Supabase no cargó. Recarga la página.');
+        return;
+      }
+
+      btn.disabled = true;
+      label.textContent = 'Subiendo...';
+      progress.style.display = 'block';
+      progressText.textContent = `Subiendo 0/${files.length}...`;
+      progressBar.style.width = '0%';
+
+      // Slug temporal (timestamp-based) porque aún no tenemos nombre inmobiliaria.
+      // El form submit posterior actualizará con el slug real si se quiere.
+      const sessionId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+      const fecha = new Date().toISOString().slice(0, 10);
+      const uploaded = [];
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i].file;
+          const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+          const n = String(i + 1).padStart(3, '0');
+          const path = `_pending/${fecha}/${sessionId}/foto_${n}.${ext}`;
+          const { error: upErr } = await window.supabase
+            .storage.from('inmobiliarias')
+            .upload(path, f, { upsert: false, contentType: f.type || 'image/jpeg' });
+          if (upErr) throw upErr;
+          uploaded.push(path);
+          progressText.textContent = `Subiendo ${i+1}/${files.length}...`;
+          progressBar.style.width = Math.round(((i+1)/files.length)*100) + '%';
+        }
+
+        window.__uploadedPaths = uploaded;
+        window.__uploadSessionId = sessionId;
+
+        // Actualizar contador en la vista del form
+        const cnt = document.getElementById('form-photos-count');
+        if (cnt) cnt.textContent = uploaded.length + ' foto' + (uploaded.length === 1 ? '' : 's') + ' cargada' + (uploaded.length === 1 ? '' : 's');
+
+        // Transicionar al form-view
+        document.getElementById('preview-view').classList.add('hidden');
+        document.getElementById('form-view').classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => {
+          const firstInput = document.getElementById('lf-inmob');
+          if (firstInput) firstInput.focus({ preventScroll: true });
+        }, 200);
+      } catch (err) {
+        console.error('[VistaTour upload]', err);
+        const detail = (err && (err.message || err.error_description || err.error)) || 'Error desconocido';
+        alert('Error subiendo fotos: ' + detail);
+      } finally {
+        btn.disabled = false;
+        label.textContent = 'Enviar imágenes y continuar con el formulario';
+        progress.style.display = 'none';
+      }
+    };
+
+    window.goBackToPreview = function () {
+      document.getElementById('form-view').classList.add('hidden');
+      document.getElementById('preview-view').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
   })();
   </script>
@@ -2479,18 +2549,41 @@
       <div class="preview-title">Espacios de la propiedad</div>
       <div class="preview-count" id="preview-count">0 fotos</div>
     </div>
-    <button class="btn-start-tour" onclick="revealLeadForm()">
+    <button class="btn-start-tour" id="btn-upload-continue" onclick="uploadAndContinue()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
         <polygon points="4,2 14,8 4,14"/>
       </svg>
-      Enviar imágenes y llenar formulario
+      <span id="btn-upload-label">Enviar imágenes y continuar con el formulario</span>
     </button>
   </div>
 
   <div class="preview-grid" id="preview-grid"></div>
 
-  <!-- Form placeholder: lead-form-wrap is moved here via JS on load -->
-  <div id="lead-form-slot"></div>
+  <div id="upload-progress" style="display:none;text-align:center;padding:24px;color:#cfd6e3;font-size:14px;">
+    <div id="upload-progress-text">Subiendo 0/0...</div>
+    <div style="margin-top:10px;max-width:420px;height:6px;background:#2a2f3b;border-radius:4px;overflow:hidden;margin-left:auto;margin-right:auto;">
+      <div id="upload-progress-bar" style="height:100%;background:linear-gradient(90deg,#ff9248,#ff6b35);width:0%;transition:width 0.25s;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     FORM VIEW (separado del preview)
+═══════════════════════════════════════════════ -->
+<div id="form-view" class="view hidden">
+  <div class="preview-header">
+    <div class="preview-header-left">
+      <button class="btn-back" onclick="goBackToPreview()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+          <path d="M10 4L6 8l4 4"/>
+        </svg>
+        Volver
+      </button>
+      <div class="preview-title">Datos de la propiedad</div>
+      <div class="preview-count" id="form-photos-count">0 fotos cargadas</div>
+    </div>
+  </div>
+  <div id="form-slot"></div>
 </div>
 
 
