@@ -1970,6 +1970,105 @@
       100% { opacity: 0; }
     }
 
+    /* Contador de sala */
+    #viewer360-room-counter {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 2px 9px;
+      letter-spacing: 0.03em;
+    }
+
+    /* Flechas de navegación dentro del canvas */
+    .viewer360-nav-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 6;
+      width: 44px; height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8,8,15,0.65);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.18s, border-color 0.18s, transform 0.18s;
+    }
+
+    .viewer360-nav-arrow:hover {
+      background: rgba(255,106,26,0.22);
+      border-color: var(--gold-dim);
+      transform: translateY(-50%) scale(1.1);
+    }
+
+    .viewer360-nav-arrow svg { width: 18px; height: 18px; }
+
+    .viewer360-nav-arrow.left  { left: 18px; }
+    .viewer360-nav-arrow.right { right: 18px; }
+
+    /* Thumbnail strip */
+    .viewer360-thumbs-wrap {
+      flex-shrink: 0;
+      background: rgba(8,8,15,0.97);
+      border-top: 1px solid var(--border);
+      padding: 10px 16px;
+    }
+
+    #viewer360-thumbs {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
+
+    #viewer360-thumbs::-webkit-scrollbar { height: 3px; }
+    #viewer360-thumbs::-webkit-scrollbar-track { background: transparent; }
+    #viewer360-thumbs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .v360-thumb {
+      flex-shrink: 0;
+      scroll-snap-align: center;
+      width: 80px;
+      cursor: pointer;
+      border-radius: 7px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      transition: border-color 0.18s, transform 0.18s;
+      position: relative;
+    }
+
+    .v360-thumb:hover   { border-color: rgba(255,106,26,0.5); transform: scale(1.04); }
+    .v360-thumb.active  { border-color: var(--gold); }
+
+    .v360-thumb img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+    }
+
+    .v360-thumb-label {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.75));
+      font-size: 9px;
+      color: rgba(255,255,255,0.85);
+      text-align: center;
+      padding: 6px 4px 4px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     /* Botón "Ver en 360°" en topbar */
     .btn-360 {
       display: flex;
@@ -2784,6 +2883,7 @@
       <span class="viewer360-badge">360°</span>
       <span id="viewer360-room-name">Vista 360°</span>
     </div>
+    <span id="viewer360-room-counter">1 / 1</span>
     <div class="viewer360-controls">
       <!-- Resetear vista -->
       <button class="btn-icon" onclick="Viewer360.resetView()" title="Restablecer vista">
@@ -2809,8 +2909,20 @@
     </div>
   </div>
 
-  <!-- Canvas Three.js -->
+  <!-- Canvas Three.js + flechas de navegación -->
   <div id="viewer360-canvas-wrap" style="position:relative;flex:1;">
+    <!-- Flecha izquierda -->
+    <button id="viewer360-prev" class="viewer360-nav-arrow left" onclick="Viewer360.prevRoom()" title="Espacio anterior">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+        <polyline points="10 3 5 8 10 13"/>
+      </svg>
+    </button>
+    <!-- Flecha derecha -->
+    <button id="viewer360-next" class="viewer360-nav-arrow right" onclick="Viewer360.nextRoom()" title="Espacio siguiente">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+        <polyline points="6 3 11 8 6 13"/>
+      </svg>
+    </button>
     <!-- Loading -->
     <div id="viewer360-loading" style="display:flex;">
       <div class="viewer360-spinner"></div>
@@ -2818,6 +2930,11 @@
     </div>
     <!-- Instrucciones (fade out automático) -->
     <div id="viewer360-hint"></div>
+  </div>
+
+  <!-- Thumbnails de espacios -->
+  <div class="viewer360-thumbs-wrap">
+    <div id="viewer360-thumbs"></div>
   </div>
 
 </div>

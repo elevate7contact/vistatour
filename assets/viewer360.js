@@ -1,34 +1,115 @@
 // ═══════════════════════════════════════════════════════════════
-// VIEWER360 — Tour 360° con panorama equirectangular combinado
-// Todas las fotos de la propiedad → 1 sola imagen panorámica
+// VIEWER360 — Tour virtual inmersivo
+// Una sala a la vez · Navegación con flechas + thumbnails
+// Fotos regulares → equirectangular por mirror-tile
 // ═══════════════════════════════════════════════════════════════
 
 const Viewer360 = (() => {
-  let scene, camera, renderer, sphere, currentTexture;
-  let animId = null;
 
-  // Rotación actual y objetivo (interpolación suave)
-  let rotX = 0, rotY = 0;
-  let targetRotX = 0, targetRotY = 0;
+  // Three.js
+  let scene, camera, renderer, sphere;
+  let animId   = null;
+  let isBound  = false;
 
-  // FOV restringido — evita distorsión excesiva
-  const FOV_DEFAULT = 80;
-  const FOV_MIN     = 65;   // zoom máximo
-  const FOV_MAX     = 90;   // zoom mínimo (vista natural)
-  let fov = FOV_DEFAULT;
+  // Estado de rooms
+  let roomSrcs      = [];
+  let roomNames     = [];
+  let currentIdx    = 0;
+  let currentTex    = null;
+  let isTransition  = false;
 
-  // Estado de arrastre
-  let isDragging  = false;
-  let prevMouseX  = 0, prevMouseY = 0;
-  let prevTouchX  = 0, prevTouchY = 0;
-  let pinchStartDist = 0, pinchStartFov = FOV_DEFAULT;
+  // Cámara
+  let rotX = 0, rotY = 0, targetRotX = 0, targetRotY = 0;
+  const FOV_DEF = 80, FOV_MIN = 65, FOV_MAX = 90;
+  let fov = FOV_DEF;
 
-  // ── Inicialización de la escena Three.js ──────────────────────
+  // Drag
+  let isDragging = false;
+  let prevMX = 0, prevMY = 0;
+  let prevTX = 0, prevTY = 0;
+  let pinchDist0 = 0, pinchFov0 = FOV_DEF;
+
+  // ── Generar equirectangular desde foto regular ────────────────
+  // Técnica mirror-tile: espeja la foto para llenar los 360°
+  // sin zonas vacías ni distorsión extrema
+  function makeEquirect(img) {
+    const W = 4096, H = 2048;
+    const c   = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+
+    // Fondo oscuro (suelo y techo fuera del foto)
+    ctx.fillStyle = '#0d0d0d';
+    ctx.fillRect(0, 0, W, H);
+
+    // Escalar foto para cubrir la altura completa
+    const scale = H / img.naturalHeight;
+    const pw    = img.naturalWidth * scale;   // ancho escalado
+    const ph    = H;
+
+    // Mirror-tile: dibuja la foto (y su espejo) hasta llenar W
+    let x = 0, flip = false;
+    while (x < W) {
+      const drawW = Math.min(pw, W - x);
+      ctx.save();
+      if (flip) {
+        // Espejo horizontal
+        ctx.translate(x + drawW, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0, pw, ph);
+      } else {
+        ctx.drawImage(img, x, 0, pw, ph);
+      }
+      ctx.restore();
+      x   += pw;
+      flip = !flip;
+    }
+
+    // Vignette top (techo) y bottom (suelo) para suavizar
+    const vTop = ctx.createLinearGradient(0, 0, 0, H * 0.22);
+    vTop.addColorStop(0, 'rgba(0,0,0,0.85)');
+    vTop.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = vTop;
+    ctx.fillRect(0, 0, W, H * 0.22);
+
+    const vBot = ctx.createLinearGradient(0, H * 0.78, 0, H);
+    vBot.addColorStop(0, 'rgba(0,0,0,0)');
+    vBot.addColorStop(1, 'rgba(0,0,0,0.85)');
+    ctx.fillStyle = vBot;
+    ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+    return c;
+  }
+
+  // ── Carga imagen y devuelve CanvasTexture equirectangular ─────
+  function loadRoomTexture(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      // Sin crossOrigin para data: y blob: (evita canvas tainted)
+      if (!src.startsWith('data:') && !src.startsWith('blob:')) {
+        img.crossOrigin = 'anonymous';
+      }
+      img.onload = () => {
+        const equi = makeEquirect(img);
+        // Convertir canvas → data URL → TextureLoader (más fiable en r128)
+        const dataUrl = equi.toDataURL('image/jpeg', 0.9);
+        const loader  = new THREE.TextureLoader();
+        loader.load(dataUrl, tex => {
+          if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+          tex.needsUpdate = true;
+          resolve(tex);
+        }, undefined, reject);
+      };
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  // ── Inicializar escena Three.js ───────────────────────────────
   function initScene(container) {
-    scene = new THREE.Scene();
-
-    const w = container.clientWidth  || window.innerWidth;
-    const h = container.clientHeight || (window.innerHeight - 54);
+    scene    = new THREE.Scene();
+    const w  = container.clientWidth  || window.innerWidth;
+    const h  = container.clientHeight || (window.innerHeight - 160);
 
     camera = new THREE.PerspectiveCamera(fov, w / h, 0.1, 1000);
     camera.position.set(0, 0, 0.01);
@@ -36,20 +117,21 @@ const Viewer360 = (() => {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(w, h);
-    // Corrección gamma para JPEGs
-    if (THREE.sRGBEncoding !== undefined) {
-      renderer.outputEncoding = THREE.sRGBEncoding;
-    }
+    if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
 
-    // Esfera invertida — textura visible desde adentro
+    // Esfera invertida
     const geo = new THREE.SphereGeometry(500, 72, 48);
     geo.scale(-1, 1, 1);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const mat = new THREE.MeshBasicMaterial({
+      color:       0x0d0d0d,
+      transparent: true,
+      opacity:     1,
+    });
     sphere = new THREE.Mesh(geo, mat);
     scene.add(sphere);
 
-    bindEvents(container);
+    if (!isBound) { bindEvents(container); isBound = true; }
     animate();
   }
 
@@ -59,325 +141,256 @@ const Viewer360 = (() => {
     rotX += (targetRotX - rotX) * 0.08;
     rotY += (targetRotY - rotY) * 0.08;
     camera.rotation.order = 'YXZ';
-    camera.rotation.y = rotY;
-    camera.rotation.x = rotX;
+    camera.rotation.y     = rotY;
+    camera.rotation.x     = rotX;
     renderer.render(scene, camera);
   }
 
-  // ── Generar panorama equirectangular combinando todas las fotos ─
-  async function generatePanorama(imageSrcs) {
-    // Resolución: 2:1 aspect ratio (equirectangular estándar)
-    const isMobile = window.innerWidth < 768;
-    const W = isMobile ? 2048 : 4096;
-    const H = W / 2;
+  // ── Actualizar UI (nombre, contador, thumbs activos) ──────────
+  function updateUI() {
+    const nameEl    = document.getElementById('viewer360-room-name');
+    const counterEl = document.getElementById('viewer360-room-counter');
+    if (nameEl)    nameEl.textContent    = roomNames[currentIdx] || `Espacio ${currentIdx + 1}`;
+    if (counterEl) counterEl.textContent = `${currentIdx + 1} / ${roomSrcs.length}`;
 
-    const canvas = document.createElement('canvas');
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
-
-    // Fondo oscuro mientras carga
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, W, H);
-
-    const n = imageSrcs.length;
-    if (n === 0) return canvas;
-
-    const sliceW = W / n;
-    const fadeW  = Math.min(sliceW * 0.06, 30); // borde difuminado
-
-    // Cargar todas las imágenes en paralelo
-    const images = await Promise.all(
-      imageSrcs.map(src => new Promise(res => {
-        const img = new Image();
-        img.onload  = () => res(img);
-        img.onerror = () => res(null);
-        img.src = src;
-      }))
-    );
-
-    // Dibujar cada imagen en su sector horizontal
-    images.forEach((img, i) => {
-      if (!img) return;
-
-      const sliceX = i * sliceW;
-
-      ctx.save();
-      // Clip al sector de esta imagen
-      ctx.beginPath();
-      ctx.rect(sliceX, 0, sliceW, H);
-      ctx.clip();
-
-      // Escalar para cubrir el sector (cover, no distorsionar)
-      const scaleX = sliceW / img.width;
-      const scaleY = H    / img.height;
-      const scale  = Math.max(scaleX, scaleY);
-      const dw = img.width  * scale;
-      const dh = img.height * scale;
-      const dx = sliceX + (sliceW - dw) / 2;
-      const dy = (H - dh) / 2;
-
-      ctx.drawImage(img, dx, dy, dw, dh);
-
-      // Difuminado en borde izquierdo (excepto primera foto)
-      if (i > 0) {
-        const gl = ctx.createLinearGradient(sliceX, 0, sliceX + fadeW, 0);
-        gl.addColorStop(0, 'rgba(0,0,0,0.55)');
-        gl.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = gl;
-        ctx.fillRect(sliceX, 0, fadeW, H);
-      }
-
-      // Difuminado en borde derecho (excepto última foto)
-      if (i < n - 1) {
-        const gr = ctx.createLinearGradient(sliceX + sliceW - fadeW, 0, sliceX + sliceW, 0);
-        gr.addColorStop(0, 'rgba(0,0,0,0)');
-        gr.addColorStop(1, 'rgba(0,0,0,0.55)');
-        ctx.fillStyle = gr;
-        ctx.fillRect(sliceX + sliceW - fadeW, 0, fadeW, H);
-      }
-
-      ctx.restore();
+    document.querySelectorAll('.v360-thumb').forEach((el, i) => {
+      el.classList.toggle('active', i === currentIdx);
     });
 
-    return canvas;
-  }
-
-  // ── Cargar textura desde data URL ─────────────────────────────
-  function loadTextureFromUrl(url) {
-    return new Promise((resolve, reject) => {
-      const loader = new THREE.TextureLoader();
-      loader.load(
-        url,
-        tex => {
-          if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
-          tex.needsUpdate = true;
-          resolve(tex);
-        },
-        undefined,
-        err => reject(err)
-      );
+    // Mostrar/ocultar flechas si es una sola sala
+    const single = roomSrcs.length <= 1;
+    ['viewer360-prev','viewer360-next'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.style.display = single ? 'none' : 'flex';
     });
   }
 
-  // ── Actualizar texto de progreso en el loading ────────────────
-  function setLoadingText(text) {
-    const el = document.getElementById('viewer360-loading');
-    if (!el) return;
-    const span = el.querySelector('span');
-    if (span) span.textContent = text;
-  }
+  // ── Fade + swap de textura al cambiar de sala ─────────────────
+  async function swapRoom(idx) {
+    if (isTransition || idx === currentIdx) return;
+    isTransition = true;
 
-  // ── Abrir el visor con todas las fotos de la propiedad ────────
-  async function open(imageSrcs, startIndex, roomNames) {
-    const overlay   = document.getElementById('viewer360-overlay');
-    const label     = document.getElementById('viewer360-room-name');
-    const loading   = document.getElementById('viewer360-loading');
-    const container = document.getElementById('viewer360-canvas-wrap');
-    const hint      = document.getElementById('viewer360-hint');
-
-    if (!overlay || !container) return;
-
-    // Normalizar parámetros
-    const srcs  = Array.isArray(imageSrcs) ? imageSrcs : [imageSrcs];
-    const idx   = typeof startIndex === 'number' ? startIndex : 0;
-    const names = Array.isArray(roomNames) ? roomNames : [];
-    const n     = srcs.length;
-
-    // Texto del topbar: "Tour 360° • N espacios"
-    label.textContent = n > 1
-      ? `Tour 360° · ${n} espacio${n !== 1 ? 's' : ''}`
-      : (names[0] || 'Vista 360°');
-
-    loading.style.display = 'flex';
-    setLoadingText('Generando panorama 360°…');
-    overlay.classList.remove('hidden');
-
-    // Resetear cámara
-    rotX = 0; rotY = 0;
-    targetRotX = 0; targetRotY = 0;
-    fov = FOV_DEFAULT;
-
-    // Instrucciones según dispositivo
-    if (hint) {
-      hint.textContent = window.matchMedia('(pointer:coarse)').matches
-        ? 'Desliza para rotar · Pellizca para zoom'
-        : 'Arrastra para explorar · Scroll para zoom';
+    // Fade out (12 frames ~ 200ms)
+    for (let i = 12; i >= 0; i--) {
+      sphere.material.opacity = i / 12;
+      renderer.render(scene, camera);
+      await new Promise(r => setTimeout(r, 16));
     }
 
-    // Esperar layout del overlay
-    await new Promise(r => setTimeout(r, 32));
+    try {
+      const tex = await loadRoomTexture(roomSrcs[idx]);
+      if (currentTex) currentTex.dispose();
+      currentTex  = tex;
+      currentIdx  = idx;
+      sphere.material.map = tex;
+      sphere.material.needsUpdate = true;
+      // Resetear cámara al frente de la nueva sala
+      rotX = 0; rotY = 0; targetRotX = 0; targetRotY = 0;
+      updateUI();
+      // Scroll el thumb activo a la vista
+      scrollThumbIntoView(idx);
+    } catch (e) {}
 
-    // Inicializar o redimensionar renderer
+    // Fade in
+    for (let i = 0; i <= 12; i++) {
+      sphere.material.opacity = i / 12;
+      renderer.render(scene, camera);
+      await new Promise(r => setTimeout(r, 16));
+    }
+
+    isTransition = false;
+  }
+
+  // ── Construir strip de thumbnails ─────────────────────────────
+  function buildThumbs() {
+    const strip = document.getElementById('viewer360-thumbs');
+    if (!strip) return;
+    strip.innerHTML = '';
+    roomSrcs.forEach((src, i) => {
+      const wrap  = document.createElement('div');
+      wrap.className = 'v360-thumb' + (i === currentIdx ? ' active' : '');
+      wrap.title = roomNames[i] || `Espacio ${i + 1}`;
+
+      const img  = document.createElement('img');
+      img.src    = src;
+      img.alt    = wrap.title;
+      img.draggable = false;
+
+      const lbl  = document.createElement('div');
+      lbl.className = 'v360-thumb-label';
+      lbl.textContent = roomNames[i] || `${i + 1}`;
+
+      wrap.appendChild(img);
+      wrap.appendChild(lbl);
+      wrap.onclick = () => goToRoom(i);
+      strip.appendChild(wrap);
+    });
+  }
+
+  function scrollThumbIntoView(idx) {
+    const strip = document.getElementById('viewer360-thumbs');
+    const thumb = strip?.querySelectorAll('.v360-thumb')[idx];
+    thumb?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // API PÚBLICA
+  // ════════════════════════════════════════════════════════════
+
+  async function open(imageSrcs, startIndex, rNames) {
+    const overlay   = document.getElementById('viewer360-overlay');
+    const loading   = document.getElementById('viewer360-loading');
+    const container = document.getElementById('viewer360-canvas-wrap');
+    if (!overlay || !container) return;
+
+    roomSrcs   = Array.isArray(imageSrcs) ? imageSrcs : [imageSrcs];
+    roomNames  = Array.isArray(rNames)    ? rNames    : [];
+    currentIdx = typeof startIndex === 'number' ? startIndex : 0;
+    fov        = FOV_DEF;
+    rotX = 0; rotY = 0; targetRotX = 0; targetRotY = 0;
+
+    loading.style.display = 'flex';
+    overlay.classList.remove('hidden');
+
+    // Instrucciones
+    const hint = document.getElementById('viewer360-hint');
+    if (hint) {
+      hint.textContent = window.matchMedia('(pointer:coarse)').matches
+        ? 'Desliza para mirar · Pellizca para zoom'
+        : 'Arrastra para mirar · Scroll para zoom';
+    }
+
+    buildThumbs();
+    updateUI();
+
+    await new Promise(r => setTimeout(r, 32)); // esperar layout
+
     if (!renderer) {
       initScene(container);
     } else {
       const w = container.clientWidth  || window.innerWidth;
-      const h = container.clientHeight || (window.innerHeight - 54);
+      const h = container.clientHeight || (window.innerHeight - 160);
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.fov    = fov;
       camera.updateProjectionMatrix();
     }
 
-    // Generar panorama combinado
+    // Cargar textura de la sala inicial
+    const setStatus = t => {
+      const sp = document.querySelector('#viewer360-loading span');
+      if (sp) sp.textContent = t;
+    };
+    setStatus('Procesando vista…');
+
     try {
-      setLoadingText(`Cargando ${n} foto${n !== 1 ? 's' : ''}…`);
-      const panoramaCanvas = await generatePanorama(srcs);
-
-      setLoadingText('Procesando textura…');
-      const dataUrl = panoramaCanvas.toDataURL('image/jpeg', 0.88);
-      const tex     = await loadTextureFromUrl(dataUrl);
-
-      if (currentTexture) currentTexture.dispose();
-      currentTexture = tex;
-      sphere.material.map = tex;
+      const tex = await loadRoomTexture(roomSrcs[currentIdx]);
+      if (currentTex) currentTex.dispose();
+      currentTex  = tex;
+      sphere.material.map     = tex;
+      sphere.material.opacity = 1;
       sphere.material.needsUpdate = true;
-
-      // Apuntar cámara al espacio actual (basado en startIndex)
-      // Cada foto ocupa 2π/n radianes → startIndex → ángulo de rotación
-      if (n > 1) {
-        // La esfera con scale(-1,1,1) mapea UV x=0 al frente y crece hacia la derecha visualmente
-        targetRotY = -(idx / n) * Math.PI * 2;
-        rotY = targetRotY; // sin transición al abrir
-      }
-
-      // Render explícito para mostrar inmediatamente
-      if (renderer) renderer.render(scene, camera);
-
+      renderer.render(scene, camera);
       loading.style.display = 'none';
-    } catch (err) {
+    } catch (e) {
       loading.innerHTML =
-        '<span style="color:var(--red);font-size:13px">Error al generar la vista 360°</span>';
+        '<span style="color:var(--red);font-size:13px">Error al cargar la imagen</span>';
     }
   }
 
-  // ── Cerrar el visor ───────────────────────────────────────────
   function close() {
     const overlay = document.getElementById('viewer360-overlay');
     if (overlay) overlay.classList.add('hidden');
     if (document.fullscreenElement) document.exitFullscreen();
   }
 
-  // ── Resetear vista al frente ──────────────────────────────────
   function resetView() {
-    targetRotX = 0;
-    targetRotY = 0;
-    fov = FOV_DEFAULT;
+    targetRotX = 0; targetRotY = 0;
+    fov = FOV_DEF;
     if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (renderer) renderer.render(scene, camera);
   }
 
-  // ── Pantalla completa ─────────────────────────────────────────
   function toggleFullscreen() {
-    const overlay = document.getElementById('viewer360-overlay');
-    if (!document.fullscreenElement) {
-      overlay.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
-    }
+    const ov = document.getElementById('viewer360-overlay');
+    if (!document.fullscreenElement) ov?.requestFullscreen();
+    else document.exitFullscreen?.();
   }
 
-  // ── Resize ────────────────────────────────────────────────────
-  function handleResize() {
-    if (!renderer) return;
-    const container = document.getElementById('viewer360-canvas-wrap');
-    if (!container) return;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
+  function nextRoom() { swapRoom((currentIdx + 1) % roomSrcs.length); }
+  function prevRoom() { swapRoom((currentIdx - 1 + roomSrcs.length) % roomSrcs.length); }
+  function goToRoom(i) { if (i !== currentIdx) swapRoom(i); }
 
-  window.addEventListener('resize', handleResize);
+  // ── Eventos mouse/touch ───────────────────────────────────────
+  function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
 
-  // ════════════════════════════════════════════════════════════
-  // EVENTOS — Mouse
-  // ════════════════════════════════════════════════════════════
-
-  function clampX(v) { return Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, v)); }
-
-  function onMouseDown(e) {
-    isDragging = true;
-    prevMouseX = e.clientX;
-    prevMouseY = e.clientY;
-  }
-
-  function onMouseMove(e) {
-    if (!isDragging) return;
-    targetRotY += (e.clientX - prevMouseX) * 0.003;
-    targetRotX  = clampX(targetRotX + (e.clientY - prevMouseY) * 0.003);
-    prevMouseX = e.clientX;
-    prevMouseY = e.clientY;
-    if (renderer) renderer.render(scene, camera);
-  }
-
-  function onMouseUp() { isDragging = false; }
-
-  function onWheel(e) {
-    e.preventDefault();
-    // Sensibilidad reducida — scroll suave sin saltos
-    fov += e.deltaY * 0.018;
-    fov  = Math.max(FOV_MIN, Math.min(FOV_MAX, fov));
-    if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
-    if (renderer) renderer.render(scene, camera);
-  }
-
-  // ── Eventos Touch ─────────────────────────────────────────────
-  function onTouchStart(e) {
-    if (e.touches.length === 1) {
-      prevTouchX = e.touches[0].clientX;
-      prevTouchY = e.touches[0].clientY;
-      pinchStartDist = 0;
-    } else if (e.touches.length === 2) {
-      pinchStartDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      pinchStartFov = fov;
-    }
-  }
-
-  function onTouchMove(e) {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-      targetRotY += (e.touches[0].clientX - prevTouchX) * 0.004;
-      targetRotX  = clampX(targetRotX + (e.touches[0].clientY - prevTouchY) * 0.004);
-      prevTouchX  = e.touches[0].clientX;
-      prevTouchY  = e.touches[0].clientY;
+  function bindEvents(container) {
+    container.addEventListener('mousedown', e => {
+      isDragging = true; prevMX = e.clientX; prevMY = e.clientY;
+      container.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      targetRotY += (e.clientX - prevMX) * 0.003;
+      targetRotX  = clamp(targetRotX + (e.clientY - prevMY) * 0.003, -Math.PI/2.5, Math.PI/2.5);
+      prevMX = e.clientX; prevMY = e.clientY;
       if (renderer) renderer.render(scene, camera);
-    } else if (e.touches.length === 2 && pinchStartDist > 0) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      // Sensibilidad pinch suave
-      fov = Math.max(FOV_MIN, Math.min(FOV_MAX,
-        pinchStartFov - (dist - pinchStartDist) * 0.06
-      ));
+    });
+    window.addEventListener('mouseup', () => {
+      isDragging = false; container.style.cursor = 'grab';
+    });
+
+    container.addEventListener('wheel', e => {
+      e.preventDefault();
+      fov = clamp(fov + e.deltaY * 0.018, FOV_MIN, FOV_MAX);
       if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
       if (renderer) renderer.render(scene, camera);
-    }
-  }
+    }, { passive: false });
 
-  function onTouchEnd() { pinchStartDist = 0; }
+    container.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        prevTX = e.touches[0].clientX; prevTY = e.touches[0].clientY;
+        pinchDist0 = 0;
+      } else if (e.touches.length === 2) {
+        pinchDist0 = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        pinchFov0 = fov;
+      }
+    }, { passive: true });
 
-  // ── Ligar eventos al canvas ───────────────────────────────────
-  function bindEvents(container) {
-    container.addEventListener('mousedown',  onMouseDown);
-    window.addEventListener('mousemove',     onMouseMove);
-    window.addEventListener('mouseup',       onMouseUp);
-    container.addEventListener('wheel',      onWheel, { passive: false });
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove',  onTouchMove,  { passive: false });
-    container.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    container.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        targetRotY += (e.touches[0].clientX - prevTX) * 0.004;
+        targetRotX  = clamp(targetRotX + (e.touches[0].clientY - prevTY) * 0.004, -Math.PI/2.5, Math.PI/2.5);
+        prevTX = e.touches[0].clientX; prevTY = e.touches[0].clientY;
+        if (renderer) renderer.render(scene, camera);
+      } else if (e.touches.length === 2 && pinchDist0 > 0) {
+        const d = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        fov = clamp(pinchFov0 - (d - pinchDist0) * 0.05, FOV_MIN, FOV_MAX);
+        if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
+        if (renderer) renderer.render(scene, camera);
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchend', () => { pinchDist0 = 0; }, { passive: true });
 
     container.style.cursor = 'grab';
-    container.addEventListener('mousedown', () => { container.style.cursor = 'grabbing'; });
-    window.addEventListener('mouseup',      () => { container.style.cursor = 'grab'; });
+
+    window.addEventListener('resize', () => {
+      if (!renderer) return;
+      const w = container.clientWidth, h = container.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    });
   }
 
-  // API pública
-  return { open, close, resetView, toggleFullscreen };
+  return { open, close, resetView, toggleFullscreen, nextRoom, prevRoom, goToRoom };
 })();
