@@ -2840,54 +2840,60 @@
 
       const nextEl = Walk.sceneNext;
       const curEl  = Walk.sceneCurrent;
+      const tunnel = document.getElementById('walk-tunnel');
+      const label  = document.getElementById('walk-progress-label');
       buildScene(nextEl, Walk.nodes[nextIdx]);
 
-      // Initial states
-      nextEl.classList.remove('current');
-      nextEl.classList.remove('leaving');
-      nextEl.classList.remove('entering');
-      // force reflow
-      void nextEl.offsetWidth;
+      // Clase direccional
+      const leaveCls = dir === 1 ? 'leaving-fwd' : 'leaving-back';
+      const enterCls = dir === 1 ? 'entering-fwd' : 'entering-back';
 
-      // Direction-aware: forward → next comes from far (-600z), current pushes past viewer (+900z)
-      if (dir === 1) {
-        nextEl.style.transform = 'translateZ(-600px)';
-        nextEl.style.opacity = '0';
-        curEl.style.transition  = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
-        nextEl.style.transition = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
-        requestAnimationFrame(() => {
-          curEl.style.transform = 'translateZ(900px)';
-          curEl.style.opacity = '0';
-          nextEl.style.transform = 'translateZ(0)';
-          nextEl.style.opacity = '1';
-        });
-      } else {
-        nextEl.style.transform = 'translateZ(500px)';
-        nextEl.style.opacity = '0';
-        curEl.style.transition  = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
-        nextEl.style.transition = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
-        requestAnimationFrame(() => {
-          curEl.style.transform = 'translateZ(-700px)';
-          curEl.style.opacity = '0';
-          nextEl.style.transform = 'translateZ(0)';
-          nextEl.style.opacity = '1';
-        });
+      // Limpiar estados previos
+      ['leaving-fwd','leaving-back','entering-fwd','entering-back'].forEach(c => {
+        curEl.classList.remove(c);
+        nextEl.classList.remove(c);
+      });
+      nextEl.classList.remove('current');
+      nextEl.style.transform = '';
+      nextEl.style.opacity = '';
+      curEl.style.transform = '';
+      curEl.style.opacity = '';
+      // Reflow para reiniciar animaciones
+      void nextEl.offsetWidth;
+      void curEl.offsetWidth;
+
+      // Etiqueta "Caminando hacia [nombre]" — sensación de recorrido
+      if (label) {
+        const nextName = (Walk.nodes[nextIdx] && Walk.nodes[nextIdx].name) || 'siguiente espacio';
+        label.textContent = dir === 1 ? `Caminando hacia ${nextName}` : `Regresando a ${nextName}`;
+        label.classList.add('visible');
       }
+
+      // Túnel oscuro + head-bob simultáneos
+      if (tunnel) { tunnel.classList.remove('active'); void tunnel.offsetWidth; tunnel.classList.add('active'); }
+      if (Walk.rig) {
+        Walk.rig.classList.remove('stepping'); void Walk.rig.offsetWidth; Walk.rig.classList.add('stepping');
+      }
+
+      // Aplicar animaciones CSS de entrada/salida
+      curEl.classList.add(leaveCls);
+      nextEl.classList.add(enterCls);
 
       setTimeout(() => {
         // Swap: next becomes current
-        curEl.style.transition = '';
-        nextEl.style.transition = '';
+        curEl.classList.remove(leaveCls);
+        nextEl.classList.remove(enterCls);
+        if (Walk.rig) Walk.rig.classList.remove('stepping');
+        if (label) label.classList.remove('visible');
+
         curEl.innerHTML = '';
         curEl.style.transform = '';
         curEl.style.opacity = '';
         nextEl.style.transform = '';
         nextEl.style.opacity = '';
 
-        // Swap the ids/references
         curEl.classList.remove('current');
         nextEl.classList.add('current');
-        // Swap references (current <-> next)
         const tmp = Walk.sceneCurrent;
         Walk.sceneCurrent = Walk.sceneNext;
         Walk.sceneNext = tmp;
@@ -2895,8 +2901,9 @@
         Walk.currentIndex = nextIdx;
         Walk.visited.add(nextIdx);
 
-        // Reset rig camera state
-        Walk.dolly = Walk.targetDolly = 0;
+        // Reset cámara con un pequeño impulso de entrada (dolly negativo mínimo → avance orgánico)
+        Walk.dolly = dir === 1 ? -40 : 40;
+        Walk.targetDolly = 0;
         Walk.yaw *= 0.2; Walk.targetYaw = 0; Walk.manualYaw = 0;
         Walk.pitch *= 0.2; Walk.targetPitch = 0;
 
@@ -3462,6 +3469,81 @@
             mask-image: linear-gradient(to top, #000 0%, #000 28%, transparent 46%);
   }
 
+  /* === Walking transition: "atravesar una puerta" === */
+  .walk-scene { filter: blur(0px) brightness(1); transition: filter 1100ms ease; }
+  .walk-scene.leaving-fwd  { animation: walk-leave-fwd 1100ms cubic-bezier(.4,0,.7,1) forwards; }
+  .walk-scene.leaving-back { animation: walk-leave-back 1100ms cubic-bezier(.4,0,.7,1) forwards; }
+  .walk-scene.entering-fwd { animation: walk-enter-fwd 1100ms cubic-bezier(.22,1,.36,1) forwards; }
+  .walk-scene.entering-back{ animation: walk-enter-back 1100ms cubic-bezier(.22,1,.36,1) forwards; }
+
+  @keyframes walk-leave-fwd {
+    0%   { transform: translateZ(0)    scale(1);    opacity: 1; filter: blur(0px) brightness(1); }
+    45%  { transform: translateZ(420px) scale(1.18); opacity: 0.55; filter: blur(6px) brightness(0.55); }
+    100% { transform: translateZ(920px) scale(1.35); opacity: 0;    filter: blur(14px) brightness(0.15); }
+  }
+  @keyframes walk-leave-back {
+    0%   { transform: translateZ(0)     scale(1);   opacity: 1; filter: blur(0px) brightness(1); }
+    50%  { transform: translateZ(-350px) scale(0.86); opacity: 0.5; filter: blur(6px) brightness(0.5); }
+    100% { transform: translateZ(-720px) scale(0.7); opacity: 0;   filter: blur(12px) brightness(0.2); }
+  }
+  @keyframes walk-enter-fwd {
+    0%   { transform: translateZ(-720px) scale(0.78); opacity: 0;    filter: blur(16px) brightness(0.2); }
+    40%  { opacity: 0.4; filter: blur(8px) brightness(0.45); }
+    100% { transform: translateZ(0)     scale(1);    opacity: 1;    filter: blur(0px) brightness(1); }
+  }
+  @keyframes walk-enter-back {
+    0%   { transform: translateZ(520px) scale(1.22); opacity: 0;   filter: blur(14px) brightness(0.25); }
+    40%  { opacity: 0.5; filter: blur(7px) brightness(0.55); }
+    100% { transform: translateZ(0)    scale(1);    opacity: 1;   filter: blur(0px) brightness(1); }
+  }
+
+  /* Túnel oscuro — viñeta que pulsa al caminar, refuerza la sensación de atravesar */
+  .walk-tunnel {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.75) 90%);
+    opacity: 0;
+    transition: opacity 160ms ease;
+  }
+  .walk-tunnel.active { animation: walk-tunnel-pulse 1100ms ease-in-out forwards; }
+  @keyframes walk-tunnel-pulse {
+    0%   { opacity: 0; }
+    45%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* Head-bob: el rig sube/baja durante la transición, imita pasos */
+  .walk-rig.stepping { animation: walk-headbob 1100ms ease-in-out; }
+  @keyframes walk-headbob {
+    0%   { transform: translateY(0); }
+    25%  { transform: translateY(-6px); }
+    55%  { transform: translateY(4px); }
+    80%  { transform: translateY(-2px); }
+    100% { transform: translateY(0); }
+  }
+
+  /* Etiqueta "Caminando hacia…" durante la transición */
+  .walk-progress-label {
+    position: absolute;
+    left: 50%; top: 18%;
+    transform: translateX(-50%) translateY(-6px);
+    font-family: var(--font-display, 'Instrument Serif', serif);
+    font-size: 22px;
+    font-style: italic;
+    letter-spacing: 0.02em;
+    color: var(--gold, #E8C37A);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.85);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+    transition: opacity 240ms ease, transform 240ms ease;
+  }
+  .walk-progress-label.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
   /* Forward hotspot (pulsing ring) */
   .walk-hotspot {
     position: absolute;
@@ -3670,6 +3752,8 @@
       <div class="walk-scene current" id="walk-scene-current"></div>
       <div class="walk-scene" id="walk-scene-next"></div>
     </div>
+    <div class="walk-tunnel" id="walk-tunnel" aria-hidden="true"></div>
+    <div class="walk-progress-label" id="walk-progress-label"></div>
 
     <!-- Forward hotspot -->
     <div class="walk-hotspot" id="walk-hotspot" onclick="walkForward()">
