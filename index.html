@@ -2180,7 +2180,7 @@
     }
   </style>
 
-  <div class="lead-form-wrap" id="lead-form-wrap">
+  <div class="lead-form-wrap" id="lead-form-wrap" style="display:none">
     <div class="eyebrow">Paso final · 60 segundos</div>
     <h2>Cuéntanos sobre <em>tu inmueble</em></h2>
     <p class="sub">Completa estos datos y un asesor de Athora AI te contacta para entregarte el tour terminado + video cinematográfico de la propiedad.</p>
@@ -2303,10 +2303,14 @@
           .insert([data]);
         if (error) throw error;
         msg.className = 'lead-msg ok';
-        msg.textContent = '¡Listo! Recibimos tu información. Un asesor te contacta en menos de 24h.';
+        msg.textContent = '¡Listo! Iniciando tu tour virtual...';
         form.reset();
         selected.clear();
         chips.forEach(c => c.classList.remove('on'));
+        // After successful submit, start the virtual tour
+        setTimeout(() => {
+          try { if (typeof startTour === 'function') startTour(); } catch(e) { console.error(e); }
+        }, 900);
       } catch (err) {
         console.error('[VistaTour lead]', err);
         msg.className = 'lead-msg err';
@@ -2316,6 +2320,28 @@
         btn.textContent = 'Enviar información y generar mi tour';
       }
     });
+
+    // Move the lead-form-wrap into the preview-view slot on load,
+    // so it only appears after the user has uploaded photos.
+    document.addEventListener('DOMContentLoaded', () => {
+      const slot = document.getElementById('lead-form-slot');
+      const formWrap = document.getElementById('lead-form-wrap');
+      if (slot && formWrap && formWrap.parentNode !== slot) {
+        slot.appendChild(formWrap);
+      }
+    });
+
+    // Global helper: reveal the lead form inside preview-view and scroll to it
+    window.revealLeadForm = function () {
+      const formWrap = document.getElementById('lead-form-wrap');
+      if (!formWrap) return;
+      formWrap.style.display = 'block';
+      setTimeout(() => {
+        formWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const firstInput = document.getElementById('lf-inmob');
+        if (firstInput) firstInput.focus({ preventScroll: true });
+      }, 80);
+    };
   })();
   </script>
 
@@ -2429,15 +2455,18 @@
       <div class="preview-title">Espacios de la propiedad</div>
       <div class="preview-count" id="preview-count">0 fotos</div>
     </div>
-    <button class="btn-start-tour" onclick="startTour()">
+    <button class="btn-start-tour" onclick="revealLeadForm()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
         <polygon points="4,2 14,8 4,14"/>
       </svg>
-      Iniciar Tour Virtual
+      Enviar imágenes y llenar formulario
     </button>
   </div>
 
   <div class="preview-grid" id="preview-grid"></div>
+
+  <!-- Form placeholder: lead-form-wrap is moved here via JS on load -->
+  <div id="lead-form-slot"></div>
 </div>
 
 
