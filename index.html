@@ -1889,33 +1889,83 @@
     <p>Sube las fotos de cada espacio y crea un tour virtual inmersivo que tus clientes podrán explorar como si estuvieran ahí.</p>
   </div>
 
-  <div class="upload-container">
-    <!-- Drop Zone -->
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileInput(event)">
-      <div class="drop-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
+  <!-- ═══════════════════════════════════════════════
+       HERO SPLIT: video cinematico + zona de subida
+  ═══════════════════════════════════════════════ -->
+  <style>
+    .hero-split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+      gap: 28px;
+      align-items: stretch;
+      max-width: 1180px;
+      margin: 0 auto 36px;
+      padding: 0 24px;
+      position: relative; z-index: 2;
+    }
+    .hero-video-wrap {
+      position: relative;
+      border-radius: 14px; overflow: hidden;
+      box-shadow: 0 30px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,170,80,0.12);
+      aspect-ratio: 9 / 16;
+      background: #0a0604;
+    }
+    .hero-video-wrap video {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .hero-video-badge {
+      position: absolute; top: 14px; left: 14px;
+      background: rgba(10,6,4,0.72); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,180,100,0.35);
+      border-radius: 999px; padding: 7px 14px;
+      font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase;
+      color: #f5c87c; font-weight: 600;
+    }
+    .hero-upload-col { display: flex; flex-direction: column; gap: 18px; }
+    .hero-upload-col .upload-container { margin: 0; max-width: none; }
+    @media (max-width: 900px) {
+      .hero-split { grid-template-columns: 1fr; gap: 22px; padding: 0 14px; }
+      .hero-video-wrap { aspect-ratio: 16 / 11; max-height: 420px; margin: 0 auto; width: 100%; }
+    }
+  </style>
+
+  <div class="hero-split">
+    <div class="hero-video-wrap">
+      <span class="hero-video-badge">Marketing Inmobiliario · Athora AI</span>
+      <video autoplay muted loop playsinline preload="auto">
+        <source src="assets/video-final-inmobiliaria.mp4" type="video/mp4">
+      </video>
+    </div>
+    <div class="hero-upload-col">
+      <div class="upload-container">
+        <!-- Drop Zone -->
+        <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileInput(event)">
+          <div class="drop-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="drop-title">Arrastra tus fotos aquí</div>
+          <div class="drop-sub">Sube todas las fotos de la propiedad de una vez. Detectamos automáticamente qué habitación es cada una.</div>
+          <div class="drop-formats">
+            <span class="format-tag">JPG</span>
+            <span class="format-tag">PNG</span>
+            <span class="format-tag">WEBP</span>
+            <span class="format-tag">HEIC</span>
+            <span class="format-tag">Hasta 50 fotos</span>
+          </div>
+          <button class="btn-browse" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+              <rect x="2" y="3" width="12" height="10" rx="2"/>
+              <circle cx="8" cy="8" r="2"/>
+            </svg>
+            Seleccionar fotos
+          </button>
+        </div>
       </div>
-      <div class="drop-title">Arrastra tus fotos aquí</div>
-      <div class="drop-sub">Sube todas las fotos de la propiedad de una vez. Detectamos automáticamente qué habitación es cada una.</div>
-      <div class="drop-formats">
-        <span class="format-tag">JPG</span>
-        <span class="format-tag">PNG</span>
-        <span class="format-tag">WEBP</span>
-        <span class="format-tag">HEIC</span>
-        <span class="format-tag">Hasta 50 fotos</span>
-      </div>
-      <button class="btn-browse" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-          <rect x="2" y="3" width="12" height="10" rx="2"/>
-          <circle cx="8" cy="8" r="2"/>
-        </svg>
-        Seleccionar fotos
-      </button>
     </div>
   </div>
 
