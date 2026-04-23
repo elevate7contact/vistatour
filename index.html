@@ -3891,11 +3891,12 @@ function triggerAnalysis(room) {
 document.getElementById('btn-toggle-left').classList.add('active');
 document.getElementById('btn-toggle-right').classList.add('active');
 
-// ── Abrir visor 360° con la habitación activa ────────────────
+// ── Abrir visor 360° con TODAS las fotos de la propiedad ─────
 function open360() {
-  const room = rooms[currentIndex];
-  if (!room) { showToast('No hay imagen para mostrar'); return; }
-  Viewer360.open(room.src, room.name);
+  if (!rooms.length) { showToast('No hay imágenes para mostrar'); return; }
+  const srcs  = rooms.map(r => r.src);
+  const names = rooms.map(r => r.name);
+  Viewer360.open(srcs, currentIndex, names);
 }
 </script>
 

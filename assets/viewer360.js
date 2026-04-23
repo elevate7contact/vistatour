@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// VIEWER360 — Visor 360° interactivo con Three.js
-// Usa SphereGeometry invertida + PerspectiveCamera
+// VIEWER360 — Tour 360° con panorama equirectangular combinado
+// Todas las fotos de la propiedad → 1 sola imagen panorámica
 // ═══════════════════════════════════════════════════════════════
 
 const Viewer360 = (() => {
@@ -10,40 +10,41 @@ const Viewer360 = (() => {
   // Rotación actual y objetivo (interpolación suave)
   let rotX = 0, rotY = 0;
   let targetRotX = 0, targetRotY = 0;
-  let fov = 75;
 
-  // Estado de arrastre (mouse)
-  let isDragging = false;
-  let prevMouseX = 0, prevMouseY = 0;
+  // FOV restringido — evita distorsión excesiva
+  const FOV_DEFAULT = 80;
+  const FOV_MIN     = 65;   // zoom máximo
+  const FOV_MAX     = 90;   // zoom mínimo (vista natural)
+  let fov = FOV_DEFAULT;
 
-  // Estado de arrastre (touch)
-  let prevTouchX = 0, prevTouchY = 0;
-  let pinchStartDist = 0;
-  let pinchStartFov = 75;
+  // Estado de arrastre
+  let isDragging  = false;
+  let prevMouseX  = 0, prevMouseY = 0;
+  let prevTouchX  = 0, prevTouchY = 0;
+  let pinchStartDist = 0, pinchStartFov = FOV_DEFAULT;
 
   // ── Inicialización de la escena Three.js ──────────────────────
   function initScene(container) {
     scene = new THREE.Scene();
 
-    const w = container.clientWidth || window.innerWidth;
+    const w = container.clientWidth  || window.innerWidth;
     const h = container.clientHeight || (window.innerHeight - 54);
 
     camera = new THREE.PerspectiveCamera(fov, w / h, 0.1, 1000);
     camera.position.set(0, 0, 0.01);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(w, h);
-    // Corrección de gamma: output en sRGB para que JPEGs se vean correctos
+    // Corrección gamma para JPEGs
     if (THREE.sRGBEncoding !== undefined) {
       renderer.outputEncoding = THREE.sRGBEncoding;
     }
     container.appendChild(renderer.domElement);
 
-    // Esfera invertida: la textura se proyecta desde adentro
-    const geo = new THREE.SphereGeometry(500, 60, 40);
+    // Esfera invertida — textura visible desde adentro
+    const geo = new THREE.SphereGeometry(500, 72, 48);
     geo.scale(-1, 1, 1);
-
     const mat = new THREE.MeshBasicMaterial({ color: 0x111111 });
     sphere = new THREE.Mesh(geo, mat);
     scene.add(sphere);
@@ -55,97 +56,199 @@ const Viewer360 = (() => {
   // ── Loop de animación ─────────────────────────────────────────
   function animate() {
     animId = requestAnimationFrame(animate);
-
-    // Interpolación suave hacia el target
     rotX += (targetRotX - rotX) * 0.08;
     rotY += (targetRotY - rotY) * 0.08;
-
     camera.rotation.order = 'YXZ';
     camera.rotation.y = rotY;
     camera.rotation.x = rotX;
-
     renderer.render(scene, camera);
   }
 
-  // ── Carga de textura con redimensionado ───────────────────────
-  function loadTexture(src) {
-    return new Promise((resolve, reject) => {
-      // Para data: y blob: URLs, Three.js TextureLoader funciona correctamente.
-      // Para URLs externas, añadimos crossOrigin.
-      const loader = new THREE.TextureLoader();
-      if (!src.startsWith('data:') && !src.startsWith('blob:')) {
-        loader.crossOrigin = 'anonymous';
+  // ── Generar panorama equirectangular combinando todas las fotos ─
+  async function generatePanorama(imageSrcs) {
+    // Resolución: 2:1 aspect ratio (equirectangular estándar)
+    const isMobile = window.innerWidth < 768;
+    const W = isMobile ? 2048 : 4096;
+    const H = W / 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Fondo oscuro mientras carga
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+
+    const n = imageSrcs.length;
+    if (n === 0) return canvas;
+
+    const sliceW = W / n;
+    const fadeW  = Math.min(sliceW * 0.06, 30); // borde difuminado
+
+    // Cargar todas las imágenes en paralelo
+    const images = await Promise.all(
+      imageSrcs.map(src => new Promise(res => {
+        const img = new Image();
+        img.onload  = () => res(img);
+        img.onerror = () => res(null);
+        img.src = src;
+      }))
+    );
+
+    // Dibujar cada imagen en su sector horizontal
+    images.forEach((img, i) => {
+      if (!img) return;
+
+      const sliceX = i * sliceW;
+
+      ctx.save();
+      // Clip al sector de esta imagen
+      ctx.beginPath();
+      ctx.rect(sliceX, 0, sliceW, H);
+      ctx.clip();
+
+      // Escalar para cubrir el sector (cover, no distorsionar)
+      const scaleX = sliceW / img.width;
+      const scaleY = H    / img.height;
+      const scale  = Math.max(scaleX, scaleY);
+      const dw = img.width  * scale;
+      const dh = img.height * scale;
+      const dx = sliceX + (sliceW - dw) / 2;
+      const dy = (H - dh) / 2;
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+
+      // Difuminado en borde izquierdo (excepto primera foto)
+      if (i > 0) {
+        const gl = ctx.createLinearGradient(sliceX, 0, sliceX + fadeW, 0);
+        gl.addColorStop(0, 'rgba(0,0,0,0.55)');
+        gl.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gl;
+        ctx.fillRect(sliceX, 0, fadeW, H);
       }
 
+      // Difuminado en borde derecho (excepto última foto)
+      if (i < n - 1) {
+        const gr = ctx.createLinearGradient(sliceX + sliceW - fadeW, 0, sliceX + sliceW, 0);
+        gr.addColorStop(0, 'rgba(0,0,0,0)');
+        gr.addColorStop(1, 'rgba(0,0,0,0.55)');
+        ctx.fillStyle = gr;
+        ctx.fillRect(sliceX + sliceW - fadeW, 0, fadeW, H);
+      }
+
+      ctx.restore();
+    });
+
+    return canvas;
+  }
+
+  // ── Cargar textura desde data URL ─────────────────────────────
+  function loadTextureFromUrl(url) {
+    return new Promise((resolve, reject) => {
+      const loader = new THREE.TextureLoader();
       loader.load(
-        src,
+        url,
         tex => {
-          // Marcar textura como sRGB para que Three.js aplique corrección de gamma
           if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
           tex.needsUpdate = true;
           resolve(tex);
         },
-        undefined,        // onProgress (no usado)
-        err => reject(err || new Error('No se pudo cargar la imagen'))
+        undefined,
+        err => reject(err)
       );
     });
   }
 
-  // ── Abrir el visor con la foto actual ─────────────────────────
-  async function open(roomSrc, roomName) {
-    const overlay  = document.getElementById('viewer360-overlay');
-    const label    = document.getElementById('viewer360-room-name');
-    const loading  = document.getElementById('viewer360-loading');
+  // ── Actualizar texto de progreso en el loading ────────────────
+  function setLoadingText(text) {
+    const el = document.getElementById('viewer360-loading');
+    if (!el) return;
+    const span = el.querySelector('span');
+    if (span) span.textContent = text;
+  }
+
+  // ── Abrir el visor con todas las fotos de la propiedad ────────
+  async function open(imageSrcs, startIndex, roomNames) {
+    const overlay   = document.getElementById('viewer360-overlay');
+    const label     = document.getElementById('viewer360-room-name');
+    const loading   = document.getElementById('viewer360-loading');
     const container = document.getElementById('viewer360-canvas-wrap');
-    const hint     = document.getElementById('viewer360-hint');
+    const hint      = document.getElementById('viewer360-hint');
 
     if (!overlay || !container) return;
 
-    label.textContent = roomName || 'Vista 360°';
+    // Normalizar parámetros
+    const srcs  = Array.isArray(imageSrcs) ? imageSrcs : [imageSrcs];
+    const idx   = typeof startIndex === 'number' ? startIndex : 0;
+    const names = Array.isArray(roomNames) ? roomNames : [];
+    const n     = srcs.length;
+
+    // Texto del topbar: "Tour 360° • N espacios"
+    label.textContent = n > 1
+      ? `Tour 360° · ${n} espacio${n !== 1 ? 's' : ''}`
+      : (names[0] || 'Vista 360°');
+
     loading.style.display = 'flex';
+    setLoadingText('Generando panorama 360°…');
     overlay.classList.remove('hidden');
 
-    // Resetear posición de cámara
+    // Resetear cámara
     rotX = 0; rotY = 0;
     targetRotX = 0; targetRotY = 0;
-    fov = 75;
+    fov = FOV_DEFAULT;
 
-    // Esperar un tick para que el browser calcule el layout del overlay
-    // (setTimeout en vez de rAF para que funcione aunque el tab no esté activo)
+    // Instrucciones según dispositivo
+    if (hint) {
+      hint.textContent = window.matchMedia('(pointer:coarse)').matches
+        ? 'Desliza para rotar · Pellizca para zoom'
+        : 'Arrastra para explorar · Scroll para zoom';
+    }
+
+    // Esperar layout del overlay
     await new Promise(r => setTimeout(r, 32));
 
+    // Inicializar o redimensionar renderer
     if (!renderer) {
       initScene(container);
     } else {
-      const w = container.clientWidth || window.innerWidth;
-      const h = container.clientHeight || window.innerHeight - 54;
+      const w = container.clientWidth  || window.innerWidth;
+      const h = container.clientHeight || (window.innerHeight - 54);
       renderer.setSize(w, h);
       camera.aspect = w / h;
-      camera.fov = fov;
+      camera.fov    = fov;
       camera.updateProjectionMatrix();
     }
 
-    // Mostrar instrucciones en móvil
-    if (hint) {
-      const isMobile = window.matchMedia('(pointer: coarse)').matches;
-      hint.textContent = isMobile
-        ? 'Desliza para rotar · Pellizca para zoom'
-        : 'Arrastra para rotar · Scroll para zoom';
-    }
-
+    // Generar panorama combinado
     try {
-      const tex = await loadTexture(roomSrc);
+      setLoadingText(`Cargando ${n} foto${n !== 1 ? 's' : ''}…`);
+      const panoramaCanvas = await generatePanorama(srcs);
+
+      setLoadingText('Procesando textura…');
+      const dataUrl = panoramaCanvas.toDataURL('image/jpeg', 0.88);
+      const tex     = await loadTextureFromUrl(dataUrl);
+
       if (currentTexture) currentTexture.dispose();
       currentTexture = tex;
       sphere.material.map = tex;
       sphere.material.needsUpdate = true;
-      // Render explícito para mostrar la textura inmediatamente
-      // (necesario cuando el tab no está activo y rAF no dispara)
+
+      // Apuntar cámara al espacio actual (basado en startIndex)
+      // Cada foto ocupa 2π/n radianes → startIndex → ángulo de rotación
+      if (n > 1) {
+        // La esfera con scale(-1,1,1) mapea UV x=0 al frente y crece hacia la derecha visualmente
+        targetRotY = -(idx / n) * Math.PI * 2;
+        rotY = targetRotY; // sin transición al abrir
+      }
+
+      // Render explícito para mostrar inmediatamente
       if (renderer) renderer.render(scene, camera);
+
       loading.style.display = 'none';
     } catch (err) {
       loading.innerHTML =
-        '<span style="color:var(--red);font-size:13px">Error al cargar la imagen</span>';
+        '<span style="color:var(--red);font-size:13px">Error al generar la vista 360°</span>';
     }
   }
 
@@ -153,65 +256,48 @@ const Viewer360 = (() => {
   function close() {
     const overlay = document.getElementById('viewer360-overlay');
     if (overlay) overlay.classList.add('hidden');
-
-    // Salir de pantalla completa si aplica
     if (document.fullscreenElement) document.exitFullscreen();
   }
 
-  // ── Resetear vista al centro ──────────────────────────────────
+  // ── Resetear vista al frente ──────────────────────────────────
   function resetView() {
     targetRotX = 0;
     targetRotY = 0;
-    fov = 75;
-    if (camera) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
+    fov = FOV_DEFAULT;
+    if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    if (renderer) renderer.render(scene, camera);
   }
 
   // ── Pantalla completa ─────────────────────────────────────────
   function toggleFullscreen() {
     const overlay = document.getElementById('viewer360-overlay');
     if (!document.fullscreenElement) {
-      overlay.requestFullscreen && overlay.requestFullscreen();
+      overlay.requestFullscreen?.();
     } else {
-      document.exitFullscreen && document.exitFullscreen();
+      document.exitFullscreen?.();
     }
   }
 
-  // ── Responsive resize ─────────────────────────────────────────
+  // ── Resize ────────────────────────────────────────────────────
   function handleResize() {
     if (!renderer) return;
     const container = document.getElementById('viewer360-canvas-wrap');
     if (!container) return;
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    camera.aspect = container.clientWidth / container.clientHeight;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
 
-  // ── Limpiar recursos Three.js ─────────────────────────────────
-  function destroy() {
-    if (animId) { cancelAnimationFrame(animId); animId = null; }
-    if (currentTexture) { currentTexture.dispose(); currentTexture = null; }
-    if (sphere) {
-      sphere.geometry.dispose();
-      sphere.material.dispose();
-      sphere = null;
-    }
-    if (renderer) { renderer.dispose(); renderer = null; }
-    scene = null;
-    camera = null;
-  }
+  window.addEventListener('resize', handleResize);
 
   // ════════════════════════════════════════════════════════════
-  // EVENTOS
+  // EVENTOS — Mouse
   // ════════════════════════════════════════════════════════════
 
-  function clampRotX(val) {
-    return Math.max(-Math.PI / 2, Math.min(Math.PI / 2, val));
-  }
+  function clampX(v) { return Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, v)); }
 
-  // Mouse ───────────────────────────────────────────────────────
   function onMouseDown(e) {
     isDragging = true;
     prevMouseX = e.clientX;
@@ -220,13 +306,10 @@ const Viewer360 = (() => {
 
   function onMouseMove(e) {
     if (!isDragging) return;
-    const dx = e.clientX - prevMouseX;
-    const dy = e.clientY - prevMouseY;
-    targetRotY += dx * 0.003;
-    targetRotX  = clampRotX(targetRotX + dy * 0.003);
+    targetRotY += (e.clientX - prevMouseX) * 0.003;
+    targetRotX  = clampX(targetRotX + (e.clientY - prevMouseY) * 0.003);
     prevMouseX = e.clientX;
     prevMouseY = e.clientY;
-    // Render inmediato en cada movimiento (fallback si rAF no está activo)
     if (renderer) renderer.render(scene, camera);
   }
 
@@ -234,13 +317,14 @@ const Viewer360 = (() => {
 
   function onWheel(e) {
     e.preventDefault();
-    fov += e.deltaY * 0.05;
-    fov = Math.max(30, Math.min(120, fov));
+    // Sensibilidad reducida — scroll suave sin saltos
+    fov += e.deltaY * 0.018;
+    fov  = Math.max(FOV_MIN, Math.min(FOV_MAX, fov));
     if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (renderer) renderer.render(scene, camera);
   }
 
-  // Touch ───────────────────────────────────────────────────────
+  // ── Eventos Touch ─────────────────────────────────────────────
   function onTouchStart(e) {
     if (e.touches.length === 1) {
       prevTouchX = e.touches[0].clientX;
@@ -258,47 +342,40 @@ const Viewer360 = (() => {
   function onTouchMove(e) {
     e.preventDefault();
     if (e.touches.length === 1) {
-      const dx = e.touches[0].clientX - prevTouchX;
-      const dy = e.touches[0].clientY - prevTouchY;
-      targetRotY += dx * 0.004;
-      targetRotX  = clampRotX(targetRotX + dy * 0.004);
-      prevTouchX = e.touches[0].clientX;
-      prevTouchY = e.touches[0].clientY;
+      targetRotY += (e.touches[0].clientX - prevTouchX) * 0.004;
+      targetRotX  = clampX(targetRotX + (e.touches[0].clientY - prevTouchY) * 0.004);
+      prevTouchX  = e.touches[0].clientX;
+      prevTouchY  = e.touches[0].clientY;
+      if (renderer) renderer.render(scene, camera);
     } else if (e.touches.length === 2 && pinchStartDist > 0) {
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
-      // Más separación = zoom in (FOV baja)
-      fov = Math.max(30, Math.min(120, pinchStartFov - (dist - pinchStartDist) * 0.15));
+      // Sensibilidad pinch suave
+      fov = Math.max(FOV_MIN, Math.min(FOV_MAX,
+        pinchStartFov - (dist - pinchStartDist) * 0.06
+      ));
       if (camera) { camera.fov = fov; camera.updateProjectionMatrix(); }
+      if (renderer) renderer.render(scene, camera);
     }
   }
 
-  function onTouchEnd() {
-    pinchStartDist = 0;
-  }
+  function onTouchEnd() { pinchStartDist = 0; }
 
-  // ── Ligar todos los eventos al contenedor ────────────────────
+  // ── Ligar eventos al canvas ───────────────────────────────────
   function bindEvents(container) {
-    // Mouse
-    container.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    container.addEventListener('wheel', onWheel, { passive: false });
-
-    // Touch
+    container.addEventListener('mousedown',  onMouseDown);
+    window.addEventListener('mousemove',     onMouseMove);
+    window.addEventListener('mouseup',       onMouseUp);
+    container.addEventListener('wheel',      onWheel, { passive: false });
     container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    container.addEventListener('touchend',   onTouchEnd,   { passive: true });
 
-    // Resize
-    window.addEventListener('resize', handleResize);
-
-    // Cursor
     container.style.cursor = 'grab';
     container.addEventListener('mousedown', () => { container.style.cursor = 'grabbing'; });
-    window.addEventListener('mouseup', () => { container.style.cursor = 'grab'; });
+    window.addEventListener('mouseup',      () => { container.style.cursor = 'grab'; });
   }
 
   // API pública
