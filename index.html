@@ -1854,6 +1854,147 @@
       .tour-topbar { padding: 0 14px; }
       .topbar-property-name { display: none; }
     }
+
+    /* ══════════════════════════════════════════════════════════════
+       VIEWER 360°
+    ══════════════════════════════════════════════════════════════ */
+    #viewer360-overlay {
+      display: flex;
+      flex-direction: column;
+      background: #000;
+      z-index: 1000;
+    }
+
+    .viewer360-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 54px;
+      background: rgba(8,8,15,0.95);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .viewer360-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .viewer360-badge {
+      background: var(--gold-glow);
+      border: 1px solid var(--gold-dim);
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+    }
+
+    #viewer360-room-name {
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .viewer360-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #viewer360-canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #viewer360-canvas-wrap canvas {
+      display: block;
+    }
+
+    #viewer360-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: rgba(0,0,0,0.8);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .viewer360-spinner {
+      width: 32px; height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    #viewer360-loading span {
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
+
+    #viewer360-hint {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(8,8,15,0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      pointer-events: none;
+      animation: fadeHint 4s ease forwards;
+      white-space: nowrap;
+    }
+
+    @keyframes fadeHint {
+      0%   { opacity: 1; }
+      60%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Botón "Ver en 360°" en topbar */
+    .btn-360 {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 36px;
+      padding: 0 14px;
+      background: var(--gold-glow);
+      border: 1px solid var(--gold-dim);
+      border-radius: 18px;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--trans);
+      letter-spacing: 0.02em;
+    }
+
+    .btn-360:hover {
+      background: rgba(255,106,26,0.25);
+      border-color: var(--gold);
+    }
+
+    .btn-360 svg { width: 13px; height: 13px; }
+
   </style>
   <script type="module">
     import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -2343,6 +2484,14 @@
           <path d="M6 7l4-3M6 9l4 3"/>
         </svg>
       </button>
+      <button class="btn-360" onclick="open360()" title="Ver en 360°">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="8" r="6"/>
+          <ellipse cx="8" cy="8" rx="3" ry="6"/>
+          <line x1="2" y1="8" x2="14" y2="8"/>
+        </svg>
+        Ver en 360°
+      </button>
       <div class="btn-separator"></div>
       <button class="btn-exit" onclick="exitTour()">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -2476,6 +2625,55 @@
       <button class="btn-modal-close" onclick="closeShareModal()">Cerrar</button>
     </div>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     VIEWER 360° OVERLAY
+═══════════════════════════════════════════════ -->
+<div id="viewer360-overlay" class="view hidden">
+
+  <!-- Topbar del visor -->
+  <div class="viewer360-topbar">
+    <div class="viewer360-title">
+      <span class="viewer360-badge">360°</span>
+      <span id="viewer360-room-name">Vista 360°</span>
+    </div>
+    <div class="viewer360-controls">
+      <!-- Resetear vista -->
+      <button class="btn-icon" onclick="Viewer360.resetView()" title="Restablecer vista">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 8a5 5 0 1 0 1-3"/>
+          <path d="M3 2v4h4"/>
+        </svg>
+      </button>
+      <!-- Pantalla completa -->
+      <button class="btn-icon" onclick="Viewer360.toggleFullscreen()" title="Pantalla completa">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>
+        </svg>
+      </button>
+      <div class="btn-separator"></div>
+      <button class="btn-exit" onclick="Viewer360.close()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <line x1="4" y1="4" x2="12" y2="12"/>
+          <line x1="12" y1="4" x2="4" y2="12"/>
+        </svg>
+        Cerrar
+      </button>
+    </div>
+  </div>
+
+  <!-- Canvas Three.js -->
+  <div id="viewer360-canvas-wrap" style="position:relative;flex:1;">
+    <!-- Loading -->
+    <div id="viewer360-loading" style="display:flex;">
+      <div class="viewer360-spinner"></div>
+      <span>Cargando vista 360°…</span>
+    </div>
+    <!-- Instrucciones (fade out automático) -->
+    <div id="viewer360-hint"></div>
+  </div>
+
 </div>
 
 <!-- Toast -->
@@ -3545,6 +3743,36 @@ function triggerAnalysis(room) {
 // Init: show buttons active
 document.getElementById('btn-toggle-left').classList.add('active');
 document.getElementById('btn-toggle-right').classList.add('active');
+
+// ── Abrir visor 360° con la habitación activa ────────────────
+function open360() {
+  const room = rooms[currentIndex];
+  if (!room) { showToast('No hay imagen para mostrar'); return; }
+  Viewer360.open(room.src, room.name);
+}
+</script>
+
+<!-- Three.js — carga lazy solo cuando se necesita el visor -->
+<script>
+(function() {
+  let loaded = false;
+  const origOpen = window.open360;
+  // Parche: la primera llamada carga Three.js y luego abre el visor
+  window.open360 = function() {
+    if (loaded) { origOpen && origOpen(); return; }
+    const s = document.createElement('script');
+    s.src = 'assets/lib/three.min.js';
+    s.onload = () => {
+      loaded = true;
+      const v = document.createElement('script');
+      v.src = 'assets/viewer360.js';
+      v.onload = () => { origOpen && origOpen(); };
+      document.head.appendChild(v);
+    };
+    s.onerror = () => showToast('Error al cargar el visor 3D.');
+    document.head.appendChild(s);
+  };
+})();
 </script>
 </body>
 </html>
