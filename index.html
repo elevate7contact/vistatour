@@ -2298,6 +2298,30 @@
 
       try {
         if (!window.supabase) throw new Error('Supabase no cargado');
+
+        // 1) Subir fotos a Supabase Storage (bucket 'inmobiliarias')
+        const slug = data.inmobiliaria
+          .toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        const fecha = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const filesToUpload = (typeof rooms !== 'undefined' ? rooms : []).filter(r => r && r.file);
+        const uploadedPaths = [];
+        for (let i = 0; i < filesToUpload.length; i++) {
+          const f = filesToUpload[i].file;
+          const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+          const n = String(i + 1).padStart(3, '0');
+          const path = `${slug}/${fecha}/foto_${n}.${ext}`;
+          const { error: upErr } = await window.supabase
+            .storage.from('inmobiliarias')
+            .upload(path, f, { upsert: true, contentType: f.type || 'image/jpeg' });
+          if (upErr) throw upErr;
+          uploadedPaths.push(path);
+        }
+        data.image_paths = uploadedPaths;
+
+        // 2) Insertar fila con paths de las fotos
         const { error } = await window.supabase
           .from('leads_inmobiliarias')
           .insert([data]);
@@ -2814,6 +2838,7 @@ function processFiles(files) {
       id: 0,
       type: type,
       src: URL.createObjectURL(file),
+      file: file, // referencia al File original para upload a Storage
       filename: file.name,
       fileSize: formatBytes(file.size),
       features: getRandomFeatures(type),
