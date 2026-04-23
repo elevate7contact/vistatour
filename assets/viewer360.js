@@ -14,8 +14,10 @@ const Viewer360 = (() => {
   // Estado de rooms
   let roomSrcs      = [];
   let roomNames     = [];
+  let roomTypes     = [];   // 'image' | 'video'  por sala
   let currentIdx    = 0;
   let currentTex    = null;
+  let currentVideo  = null; // HTMLVideoElement activo (si sala es video)
   let isTransition  = false;
 
   // Cámara
@@ -88,6 +90,47 @@ const Viewer360 = (() => {
     }
 
     return c;
+  }
+
+  // ── Carga video y devuelve VideoTexture ──────────────────────
+  function loadRoomVideo(src) {
+    return new Promise((resolve, reject) => {
+      const vid = document.createElement('video');
+      vid.loop        = true;
+      vid.muted       = true;
+      vid.playsInline = true;
+      if (!src.startsWith('data:') && !src.startsWith('blob:')) {
+        vid.crossOrigin = 'anonymous';
+      }
+      vid.addEventListener('loadeddata', () => {
+        const tex = new THREE.VideoTexture(vid);
+        if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+        vid.play().catch(() => {});
+        resolve({ tex, vid });
+      }, { once: true });
+      vid.addEventListener('error', () => reject(new Error('Video load error')), { once: true });
+      vid.src = src;
+      vid.load();
+    });
+  }
+
+  // ── Sincronizar icono del botón play/pause ────────────────────
+  function _syncPlayBtn() {
+    const btn = document.getElementById('viewer360-play-btn');
+    if (!btn) return;
+    const isVid = roomTypes[currentIdx] === 'video';
+    btn.style.display = isVid ? 'flex' : 'none';
+    if (!currentVideo) return;
+    btn.innerHTML = currentVideo.paused
+      ? `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><polygon points="4,2 14,8 4,14"/></svg>`
+      : `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><rect x="3" y="2" width="4" height="12" rx="1"/><rect x="9" y="2" width="4" height="12" rx="1"/></svg>`;
+  }
+
+  // ── Detener y liberar video actual ────────────────────────────
+  function _releaseVideo() {
+    if (!currentVideo) return;
+    currentVideo.pause();
+    currentVideo = null;
   }
 
   // ── Carga imagen y devuelve CanvasTexture equirectangular ─────
@@ -172,6 +215,9 @@ const Viewer360 = (() => {
       const btn = document.getElementById(id);
       if (btn) btn.style.display = single ? 'none' : 'flex';
     });
+
+    // Botón play/pause (solo visible en salas de video)
+    _syncPlayBtn();
   }
 
   // ── Fade + swap de textura al cambiar de sala ─────────────────
@@ -187,7 +233,17 @@ const Viewer360 = (() => {
     }
 
     try {
-      const tex = await loadRoomTexture(roomSrcs[idx]);
+      const isVid = roomTypes[idx] === 'video';
+      let tex;
+      if (isVid) {
+        const result = await loadRoomVideo(roomSrcs[idx]);
+        tex = result.tex;
+        _releaseVideo();
+        currentVideo = result.vid;
+      } else {
+        tex = await loadRoomTexture(roomSrcs[idx]);
+        _releaseVideo();
+      }
       if (currentTex) currentTex.dispose();
       currentTex  = tex;
       currentIdx  = idx;
@@ -216,20 +272,37 @@ const Viewer360 = (() => {
     if (!strip) return;
     strip.innerHTML = '';
     roomSrcs.forEach((src, i) => {
+      const isVid = roomTypes[i] === 'video';
       const wrap  = document.createElement('div');
       wrap.className = 'v360-thumb' + (i === currentIdx ? ' active' : '');
       wrap.title = roomNames[i] || `Espacio ${i + 1}`;
 
-      const img  = document.createElement('img');
-      img.src    = src;
-      img.alt    = wrap.title;
-      img.draggable = false;
+      if (isVid) {
+        const vid       = document.createElement('video');
+        vid.src         = src;
+        vid.muted       = true;
+        vid.autoplay    = true;
+        vid.loop        = true;
+        vid.playsInline = true;
+        vid.draggable   = false;
+        wrap.appendChild(vid);
+        // Insignia de video
+        const badge = document.createElement('div');
+        badge.className = 'v360-thumb-video-badge';
+        badge.textContent = '▶';
+        wrap.appendChild(badge);
+      } else {
+        const img     = document.createElement('img');
+        img.src       = src;
+        img.alt       = wrap.title;
+        img.draggable = false;
+        wrap.appendChild(img);
+      }
 
       const lbl  = document.createElement('div');
       lbl.className = 'v360-thumb-label';
       lbl.textContent = roomNames[i] || `${i + 1}`;
 
-      wrap.appendChild(img);
       wrap.appendChild(lbl);
       wrap.onclick = () => goToRoom(i);
       strip.appendChild(wrap);
@@ -246,7 +319,7 @@ const Viewer360 = (() => {
   // API PÚBLICA
   // ════════════════════════════════════════════════════════════
 
-  async function open(imageSrcs, startIndex, rNames) {
+  async function open(imageSrcs, startIndex, rNames, rTypes) {
     const overlay   = document.getElementById('viewer360-overlay');
     const loading   = document.getElementById('viewer360-loading');
     const container = document.getElementById('viewer360-canvas-wrap');
@@ -254,6 +327,7 @@ const Viewer360 = (() => {
 
     roomSrcs   = Array.isArray(imageSrcs) ? imageSrcs : [imageSrcs];
     roomNames  = Array.isArray(rNames)    ? rNames    : [];
+    roomTypes  = Array.isArray(rTypes)    ? rTypes    : [];
     currentIdx = typeof startIndex === 'number' ? startIndex : 0;
     fov        = FOV_DEF;
     rotX = 0; rotY = 0; targetRotX = 0; targetRotY = 0;
@@ -293,24 +367,44 @@ const Viewer360 = (() => {
     setStatus('Procesando vista…');
 
     try {
-      const tex = await loadRoomTexture(roomSrcs[currentIdx]);
-      if (currentTex) currentTex.dispose();
-      currentTex  = tex;
-      sphere.material.map     = tex;
+      const isVid = roomTypes[currentIdx] === 'video';
+      _releaseVideo();
+      if (isVid) {
+        setStatus('Procesando video…');
+        const result = await loadRoomVideo(roomSrcs[currentIdx]);
+        if (currentTex) currentTex.dispose();
+        currentTex  = result.tex;
+        currentVideo = result.vid;
+      } else {
+        setStatus('Procesando vista…');
+        const tex = await loadRoomTexture(roomSrcs[currentIdx]);
+        if (currentTex) currentTex.dispose();
+        currentTex  = tex;
+      }
+      sphere.material.map     = currentTex;
       sphere.material.opacity = 1;
       sphere.material.needsUpdate = true;
       renderer.render(scene, camera);
       loading.style.display = 'none';
+      updateUI(); // sincronizar botón play/pause
     } catch (e) {
       loading.innerHTML =
-        '<span style="color:var(--red);font-size:13px">Error al cargar la imagen</span>';
+        '<span style="color:var(--red);font-size:13px">Error al cargar el archivo</span>';
     }
   }
 
   function close() {
+    _releaseVideo();
     const overlay = document.getElementById('viewer360-overlay');
     if (overlay) overlay.classList.add('hidden');
     if (document.fullscreenElement) document.exitFullscreen();
+  }
+
+  function togglePlay() {
+    if (!currentVideo) return;
+    if (currentVideo.paused) currentVideo.play().catch(() => {});
+    else currentVideo.pause();
+    _syncPlayBtn();
   }
 
   function resetView() {
@@ -401,5 +495,5 @@ const Viewer360 = (() => {
     });
   }
 
-  return { open, close, resetView, toggleFullscreen, nextRoom, prevRoom, goToRoom };
+  return { open, close, resetView, toggleFullscreen, nextRoom, prevRoom, goToRoom, togglePlay };
 })();

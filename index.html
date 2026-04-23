@@ -760,6 +760,20 @@
       display: block;
     }
 
+    /* Insignia "▶ Video" sobre cards de video en la grilla */
+    .preview-card-video-badge {
+      position: absolute;
+      top: 10px; left: 10px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 3px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+      pointer-events: none;
+    }
+
     .preview-card-add {
       background: var(--card);
       border: 2px dashed var(--gold-dim);
@@ -2048,11 +2062,43 @@
     .v360-thumb:hover   { border-color: rgba(255,106,26,0.5); transform: scale(1.04); }
     .v360-thumb.active  { border-color: var(--gold); }
 
-    .v360-thumb img {
+    .v360-thumb img,
+    .v360-thumb video {
       display: block;
       width: 100%;
       aspect-ratio: 4/3;
       object-fit: cover;
+    }
+
+    /* Insignia "▶" sobre miniaturas de video */
+    .v360-thumb-video-badge {
+      position: absolute;
+      top: 4px; right: 5px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 8px;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 3px;
+      pointer-events: none;
+    }
+
+    /* Botón play/pause flotante en el visor */
+    #viewer360-play-btn {
+      display: none; /* se muestra vía JS solo cuando sala es video */
+      align-items: center;
+      justify-content: center;
+      width: 32px; height: 32px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.18s, border-color 0.18s;
+    }
+    #viewer360-play-btn:hover {
+      background: rgba(255,106,26,0.22);
+      border-color: var(--gold-dim);
     }
 
     .v360-thumb-label {
@@ -2179,7 +2225,7 @@
       <div class="upload-container">
         <!-- Drop Zone -->
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" multiple accept="image/*,.heic,.heif" onchange="handleFileInput(event)">
+          <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,video/mp4,video/webm,video/quicktime,.mp4,.mov,.webm" onchange="handleFileInput(event)">
           <div class="drop-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -2188,13 +2234,14 @@
             </svg>
           </div>
           <div class="drop-title">Arrastra tus fotos aquí</div>
-          <div class="drop-sub">Sube todas las fotos de la propiedad de una vez. Detectamos automáticamente qué habitación es cada una.</div>
+          <div class="drop-sub">Sube fotos y videos de la propiedad. Detectamos automáticamente qué habitación es cada uno.</div>
           <div class="drop-formats">
             <span class="format-tag">JPG</span>
             <span class="format-tag">PNG</span>
-            <span class="format-tag">WEBP</span>
             <span class="format-tag">HEIC</span>
-            <span class="format-tag">Hasta 50 fotos</span>
+            <span class="format-tag">MP4</span>
+            <span class="format-tag">MOV</span>
+            <span class="format-tag">Hasta 50 archivos</span>
           </div>
           <button class="btn-browse" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
@@ -2885,6 +2932,10 @@
     </div>
     <span id="viewer360-room-counter">1 / 1</span>
     <div class="viewer360-controls">
+      <!-- Play/Pause video (visible solo en salas de video) -->
+      <button id="viewer360-play-btn" onclick="Viewer360.togglePlay()" title="Play / Pausa">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><polygon points="4,2 14,8 4,14"/></svg>
+      </button>
       <!-- Resetear vista -->
       <button class="btn-icon" onclick="Viewer360.resetView()" title="Restablecer vista">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -3060,15 +3111,24 @@ async function convertHeicToBlob(file) {
   return Array.isArray(blob) ? blob[0] : blob;
 }
 
+function isVideoFile(f) {
+  if (f.type.startsWith('video/')) return true;
+  const ext = f.name.split('.').pop().toLowerCase();
+  return ['mp4', 'mov', 'webm', 'm4v'].includes(ext);
+}
+
 async function processFiles(files) {
   const remaining = MAX_ROOMS - rooms.length;
-  if (remaining <= 0) { showToast('Máximo ' + MAX_ROOMS + ' fotos alcanzado'); return; }
+  if (remaining <= 0) { showToast('Máximo ' + MAX_ROOMS + ' archivos alcanzado'); return; }
 
-  // Aceptar imágenes normales + HEIC por extensión (type puede ser vacío en algunos SO)
-  const imageFiles = files.filter(f =>
-    f.type.startsWith('image/') || isHeicFile(f)
+  // Aceptar imágenes (+ HEIC) y videos
+  const validFiles = files.filter(f =>
+    f.type.startsWith('image/') || isHeicFile(f) || isVideoFile(f)
   ).slice(0, remaining);
-  if (imageFiles.length === 0) { showToast('No se encontraron imágenes válidas'); return; }
+  if (validFiles.length === 0) { showToast('No se encontraron archivos válidos'); return; }
+
+  const videoFiles   = validFiles.filter(f => isVideoFile(f));
+  const imageFiles   = validFiles.filter(f => !isVideoFile(f));
 
   // Separar HEIC del resto
   const heicFiles    = imageFiles.filter(f => isHeicFile(f));
@@ -3099,6 +3159,7 @@ async function processFiles(files) {
       file, filename: file.name, fileSize: formatBytes(file.size),
       features: getRandomFeatures(type),
       detected: true, _typeLabel: typeInfo.label, analysis: null,
+      isVideo: false,
     };
   });
 
@@ -3112,10 +3173,25 @@ async function processFiles(files) {
       file, filename: file.name, fileSize: formatBytes(file.size),
       features: getRandomFeatures(type),
       detected: true, _typeLabel: typeInfo.label, analysis: null,
+      isVideo: false,
     };
   });
 
-  const newRooms = [...regularRooms, ...heicRooms];
+  // Crear rooms para videos
+  const videoRooms = videoFiles.map(file => {
+    const type = detectRoomType(file.name);
+    const typeInfo = ROOM_TYPES[type];
+    return {
+      id: 0, type,
+      src: URL.createObjectURL(file),
+      file, filename: file.name, fileSize: formatBytes(file.size),
+      features: getRandomFeatures(type),
+      detected: true, _typeLabel: typeInfo.label, analysis: null,
+      isVideo: true,
+    };
+  });
+
+  const newRooms = [...regularRooms, ...heicRooms, ...videoRooms];
 
   rooms = rooms.concat(newRooms);
   rooms.sort((a, b) => {
@@ -3226,7 +3302,13 @@ async function extractFromUrl() {
 function showPreview() {
   document.getElementById('upload-view').classList.add('hidden');
   document.getElementById('preview-view').classList.remove('hidden');
-  document.getElementById('preview-count').textContent = rooms.length + ' foto' + (rooms.length !== 1 ? 's' : '');
+  const vidCnt = rooms.filter(r => r.isVideo).length;
+  const imgCnt = rooms.length - vidCnt;
+  let countText = '';
+  if (vidCnt === 0)      countText = imgCnt + ' foto' + (imgCnt !== 1 ? 's' : '');
+  else if (imgCnt === 0) countText = vidCnt + ' video' + (vidCnt !== 1 ? 's' : '');
+  else                   countText = imgCnt + ' foto' + (imgCnt !== 1 ? 's' : '') + ' · ' + vidCnt + ' video' + (vidCnt !== 1 ? 's' : '');
+  document.getElementById('preview-count').textContent = countText;
   renderPreviewGrid();
 }
 
@@ -3240,7 +3322,7 @@ function renderPreviewGrid() {
     addTile.onclick = () => document.getElementById('file-input').click();
     addTile.innerHTML = `
       <div class="plus-icon">+</div>
-      <div class="add-label">Agregar fotos</div>
+      <div class="add-label">Agregar fotos / videos</div>
       <div class="add-hint">${rooms.length}/${MAX_ROOMS} · click o arrastra</div>
     `;
     addTile.addEventListener('dragover', e => { e.preventDefault(); addTile.style.background = 'var(--gold-glow)'; });
@@ -3259,7 +3341,11 @@ function renderPreviewGrid() {
     card.innerHTML = `
       <div class="preview-card-order">${i + 1}</div>
       ${room.detected ? '<div class="preview-card-detected">Auto-detectado</div>' : ''}
-      <img class="preview-card-img" src="${room.src}" alt="${room.name}" loading="lazy">
+      ${room.isVideo
+        ? `<video class="preview-card-img" src="${room.src}" muted autoplay loop playsinline></video>
+           <div class="preview-card-video-badge">▶ Video</div>`
+        : `<img class="preview-card-img" src="${room.src}" alt="${room.name}" loading="lazy">`
+      }
       <div class="preview-card-body">
         <div class="room-icon-preview">${ROOM_TYPES[room.type].icon}</div>
         <select class="room-type-selector" data-index="${i}" onchange="changeRoomType(${i}, this.value)">
@@ -4069,10 +4155,11 @@ document.getElementById('btn-toggle-right').classList.add('active');
 
 // ── Abrir visor 360° con TODAS las fotos de la propiedad ─────
 function open360() {
-  if (!rooms.length) { showToast('No hay imágenes para mostrar'); return; }
+  if (!rooms.length) { showToast('No hay archivos para mostrar'); return; }
   const srcs  = rooms.map(r => r.src);
   const names = rooms.map(r => r.name);
-  Viewer360.open(srcs, currentIndex, names);
+  const types = rooms.map(r => r.isVideo ? 'video' : 'image');
+  Viewer360.open(srcs, currentIndex, names, types);
 }
 </script>
 
