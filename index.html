@@ -1889,24 +1889,6 @@
     <p>Sube las fotos de cada espacio y crea un tour virtual inmersivo que tus clientes podrán explorar como si estuvieran ahí.</p>
   </div>
 
-  <!-- Video example section: "así se ve tu tour" -->
-  <div class="section-heading">
-    <div class="eyebrow">Ejemplo real</div>
-    <h2>Así se ve tu propiedad con <em>VistaTour</em></h2>
-    <p>Mira cómo transformamos fotos estáticas en una experiencia que engancha a los compradores.</p>
-  </div>
-
-  <div class="video-banner">
-    <video autoplay muted loop playsinline preload="auto">
-      <source src="assets/marketing-inmobiliario.mp4" type="video/mp4">
-    </video>
-  </div>
-  <div class="video-banner-overlay">
-    <div class="video-banner-tag">Marketing Inmobiliario · Athora AI</div>
-    <div class="video-banner-title">De fotos planas a <em>tours que venden</em></div>
-    <div class="video-banner-sub">Tecnología premium para agentes que quieren cerrar más rápido.</div>
-  </div>
-
   <div class="upload-container">
     <!-- Drop Zone -->
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -1936,6 +1918,216 @@
       </button>
     </div>
   </div>
+
+  <!-- ═══════════════════════════════════════════════
+       LEAD FORM: cuestionario rápido de inmobiliaria
+  ═══════════════════════════════════════════════ -->
+  <style>
+    .lead-form-wrap {
+      max-width: 860px; margin: 36px auto 24px; padding: 32px 28px;
+      background: linear-gradient(180deg, rgba(28,18,10,0.72), rgba(18,10,6,0.88));
+      border: 1px solid rgba(255,180,100,0.22); border-radius: 14px;
+      box-shadow: 0 30px 80px -20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,140,50,0.08);
+      position: relative; z-index: 2;
+    }
+    .lead-form-wrap .eyebrow {
+      font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+      color: var(--gold-light, #f5c87c); font-weight: 600; margin-bottom: 6px;
+    }
+    .lead-form-wrap h2 {
+      font-family: 'Cormorant Garamond', serif; font-weight: 500;
+      font-size: 30px; line-height: 1.15; color: #f4e6d2; margin: 0 0 6px;
+    }
+    .lead-form-wrap h2 em { color: var(--gold-light, #f5c87c); font-style: italic; }
+    .lead-form-wrap .sub { color: rgba(240,220,190,0.66); font-size: 14px; margin: 0 0 22px; line-height: 1.55; }
+    .lead-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+    .lead-grid .full { grid-column: 1 / -1; }
+    .lead-field { display: flex; flex-direction: column; gap: 6px; }
+    .lead-field label {
+      font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+      color: rgba(240,220,190,0.72); font-weight: 600;
+    }
+    .lead-field input, .lead-field textarea, .lead-field select {
+      width: 100%; padding: 12px 14px; border-radius: 8px; background: rgba(8,5,3,0.65);
+      border: 1px solid rgba(255,170,80,0.16); color: #f4e6d2;
+      font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px;
+      transition: border-color .2s, box-shadow .2s; outline: none;
+    }
+    .lead-field input:focus, .lead-field textarea:focus, .lead-field select:focus {
+      border-color: rgba(255,180,100,0.55); box-shadow: 0 0 0 3px rgba(255,170,80,0.12);
+    }
+    .lead-field textarea { min-height: 80px; resize: vertical; }
+    .lead-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 7px 13px; border-radius: 999px; border: 1px solid rgba(255,170,80,0.25);
+      background: rgba(255,170,80,0.04); color: rgba(240,220,190,0.85);
+      font-size: 12.5px; cursor: pointer; user-select: none; transition: all .18s;
+    }
+    .chip:hover { border-color: rgba(255,180,100,0.55); color: #f5c87c; }
+    .chip.on {
+      background: linear-gradient(135deg, rgba(255,170,80,0.22), rgba(255,130,40,0.28));
+      border-color: rgba(255,180,100,0.75); color: #fff3e0;
+    }
+    .lead-submit {
+      margin-top: 20px; width: 100%; padding: 14px 18px; border: 0; cursor: pointer;
+      border-radius: 10px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14.5px;
+      color: #1a0e06; letter-spacing: .4px;
+      background: linear-gradient(135deg, #f5c87c 0%, #e89f3a 55%, #d17a1c 100%);
+      box-shadow: 0 15px 40px -12px rgba(225,140,40,0.55);
+      transition: transform .12s, box-shadow .2s;
+    }
+    .lead-submit:hover { transform: translateY(-1px); box-shadow: 0 20px 48px -10px rgba(225,140,40,0.7); }
+    .lead-submit:disabled { opacity: .55; cursor: wait; transform: none; }
+    .lead-msg { margin-top: 12px; font-size: 13px; text-align: center; min-height: 18px; }
+    .lead-msg.ok { color: #9be3a4; }
+    .lead-msg.err { color: #ff8a8a; }
+    @media (max-width: 640px) {
+      .lead-grid { grid-template-columns: 1fr; }
+      .lead-row-4 { grid-template-columns: 1fr 1fr; }
+      .lead-form-wrap { padding: 24px 18px; margin: 28px 14px 18px; }
+      .lead-form-wrap h2 { font-size: 24px; }
+    }
+  </style>
+
+  <div class="lead-form-wrap" id="lead-form-wrap">
+    <div class="eyebrow">Paso final · 60 segundos</div>
+    <h2>Cuéntanos sobre <em>tu inmueble</em></h2>
+    <p class="sub">Completa estos datos y un asesor de Athora AI te contacta para entregarte el tour terminado + video cinematográfico de la propiedad.</p>
+
+    <form id="lead-form" autocomplete="on" novalidate>
+      <div class="lead-grid">
+        <div class="lead-field">
+          <label for="lf-inmob">Nombre de la inmobiliaria *</label>
+          <input id="lf-inmob" name="inmobiliaria" type="text" required placeholder="Ej: Century 21 Chapinero">
+        </div>
+        <div class="lead-field">
+          <label for="lf-persona">Persona de contacto *</label>
+          <input id="lf-persona" name="persona" type="text" required placeholder="Nombre y apellido">
+        </div>
+        <div class="lead-field">
+          <label for="lf-correo">Correo *</label>
+          <input id="lf-correo" name="correo" type="email" required placeholder="tucorreo@inmobiliaria.com">
+        </div>
+        <div class="lead-field">
+          <label for="lf-valor">Valor del inmueble *</label>
+          <input id="lf-valor" name="valor_inmueble" type="text" required placeholder="Ej: COP 550.000.000">
+        </div>
+        <div class="lead-field full">
+          <label for="lf-ubic">Ubicación *</label>
+          <input id="lf-ubic" name="ubicacion" type="text" required placeholder="Dirección, barrio, ciudad">
+        </div>
+        <div class="lead-field full">
+          <label>Características principales (elige las que apliquen)</label>
+          <div class="chip-group" id="lf-chips">
+            <div class="chip" data-val="Amoblado">Amoblado</div>
+            <div class="chip" data-val="Vista panorámica">Vista panorámica</div>
+            <div class="chip" data-val="Terraza">Terraza</div>
+            <div class="chip" data-val="Piscina">Piscina</div>
+            <div class="chip" data-val="Gimnasio">Gimnasio</div>
+            <div class="chip" data-val="Zona BBQ">Zona BBQ</div>
+            <div class="chip" data-val="Ascensor">Ascensor</div>
+            <div class="chip" data-val="Portería 24h">Portería 24h</div>
+            <div class="chip" data-val="Obra nueva">Obra nueva</div>
+            <div class="chip" data-val="Remodelado">Remodelado</div>
+          </div>
+          <input id="lf-caract-extra" name="caracteristicas_extra" type="text" style="margin-top:10px" placeholder="Agrega otras características separadas por coma">
+        </div>
+        <div class="lead-field full">
+          <label>Detalles del inmueble</label>
+          <div class="lead-row-4">
+            <input id="lf-piso" name="piso" type="text" placeholder="Piso Nº">
+            <input id="lf-garaje" name="garaje" type="text" placeholder="Garaje (Nº / Sí / No)">
+            <input id="lf-balcon" name="balcon" type="text" placeholder="Balcón (Sí / No)">
+            <input id="lf-hab" name="habitaciones" type="number" min="0" placeholder="Habitaciones">
+          </div>
+          <div class="lead-row-4" style="margin-top:10px">
+            <input id="lf-banos" name="banos" type="number" min="0" placeholder="Baños">
+            <input id="lf-area" name="area" type="text" placeholder="Área (m²)">
+            <input id="lf-estrato" name="estrato" type="text" placeholder="Estrato">
+            <input id="lf-admon" name="administracion" type="text" placeholder="Admon (opcional)">
+          </div>
+        </div>
+        <div class="lead-field full">
+          <label for="lf-extra">¿Algo más que queramos saber?</label>
+          <textarea id="lf-extra" name="extra" placeholder="Cualquier detalle adicional: historial, objetivos de venta, plazos, preferencias..."></textarea>
+        </div>
+      </div>
+      <button type="submit" class="lead-submit" id="lf-submit">Enviar información y generar mi tour</button>
+      <div class="lead-msg" id="lf-msg"></div>
+    </form>
+  </div>
+
+  <script>
+  (function(){
+    const chips = document.querySelectorAll('#lf-chips .chip');
+    const selected = new Set();
+    chips.forEach(c => c.addEventListener('click', () => {
+      c.classList.toggle('on');
+      const v = c.dataset.val;
+      if (c.classList.contains('on')) selected.add(v); else selected.delete(v);
+    }));
+
+    const form = document.getElementById('lead-form');
+    const msg = document.getElementById('lf-msg');
+    const btn = document.getElementById('lf-submit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.className = 'lead-msg';
+      msg.textContent = '';
+
+      const data = {
+        inmobiliaria: document.getElementById('lf-inmob').value.trim(),
+        persona:       document.getElementById('lf-persona').value.trim(),
+        correo:        document.getElementById('lf-correo').value.trim(),
+        valor_inmueble:document.getElementById('lf-valor').value.trim(),
+        ubicacion:     document.getElementById('lf-ubic').value.trim(),
+        caracteristicas: Array.from(selected),
+        caracteristicas_extra: document.getElementById('lf-caract-extra').value.trim(),
+        piso:          document.getElementById('lf-piso').value.trim(),
+        garaje:        document.getElementById('lf-garaje').value.trim(),
+        balcon:        document.getElementById('lf-balcon').value.trim(),
+        habitaciones:  parseInt(document.getElementById('lf-hab').value) || null,
+        banos:         parseInt(document.getElementById('lf-banos').value) || null,
+        area:          document.getElementById('lf-area').value.trim(),
+        estrato:       document.getElementById('lf-estrato').value.trim(),
+        administracion:document.getElementById('lf-admon').value.trim(),
+        extra:         document.getElementById('lf-extra').value.trim(),
+        created_at:    new Date().toISOString()
+      };
+
+      if (!data.inmobiliaria || !data.persona || !data.correo || !data.valor_inmueble || !data.ubicacion) {
+        msg.className = 'lead-msg err';
+        msg.textContent = 'Completa los campos marcados con *';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      try {
+        if (!window.supabase) throw new Error('Supabase no cargado');
+        const { error } = await window.supabase
+          .from('leads_inmobiliarias')
+          .insert([data]);
+        if (error) throw error;
+        msg.className = 'lead-msg ok';
+        msg.textContent = '¡Listo! Recibimos tu información. Un asesor te contacta en menos de 24h.';
+        form.reset();
+        selected.clear();
+        chips.forEach(c => c.classList.remove('on'));
+      } catch (err) {
+        console.error('[VistaTour lead]', err);
+        msg.className = 'lead-msg err';
+        msg.textContent = 'No pudimos guardar tu info. Escríbenos a hola@athora.ai o WhatsApp +57 300 000 0000.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enviar información y generar mi tour';
+      }
+    });
+  })();
+  </script>
 
   <!-- Property showcase: why realtors choose VistaTour -->
   <div class="showcase-row">
