@@ -124,9 +124,9 @@
       pointer-events: none;
       z-index: 0;
       overflow: hidden;
-      opacity: 0.55;
-      mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
-      -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
+      opacity: 0.9;
+      mask-image: linear-gradient(180deg, #000 0%, #000 65%, rgba(0,0,0,0.4) 85%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 65%, rgba(0,0,0,0.4) 85%, transparent 100%);
     }
     .parallax-scene svg {
       position: absolute;
@@ -137,7 +137,6 @@
       height: auto;
       transform: translate3d(-50%, 0, 0);
       will-change: transform;
-      transition: transform 0.25s cubic-bezier(.2,.7,.2,1);
     }
     .parallax-scene .layer-sky      { z-index: 1; bottom: auto; top: 0; height: 100vh; width: 100vw; min-width: 100vw; left: 0; transform: translate3d(0,0,0); }
     .parallax-scene .layer-mountains{ z-index: 2; }
@@ -2252,154 +2251,246 @@
 <div id="upload-view" class="view">
   <div class="upload-bg"></div>
 
-  <!-- Parallax scene: casa moderna con capas reactivas -->
+  <!-- Parallax scene: casa moderna de día, reactiva a mouse + scroll -->
   <div class="parallax-scene" aria-hidden="true">
-    <!-- Cielo con gradiente -->
+
+    <!-- CIELO DE DÍA con sol y nubes -->
     <svg class="layer-sky" data-depth="0.02" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
       <defs>
-        <radialGradient id="sky-glow" cx="50%" cy="75%" r="70%">
-          <stop offset="0%"  stop-color="#2a1408" stop-opacity="0.9"/>
-          <stop offset="40%" stop-color="#15090a" stop-opacity="0.6"/>
-          <stop offset="100%" stop-color="#0a0604" stop-opacity="0"/>
-        </radialGradient>
-        <radialGradient id="moon-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#f5d8a8" stop-opacity="0.25"/>
-          <stop offset="100%" stop-color="#f5d8a8" stop-opacity="0"/>
+        <linearGradient id="sky-day" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#89c4f4"/>
+          <stop offset="45%"  stop-color="#c5dff5"/>
+          <stop offset="80%"  stop-color="#ffd8a8"/>
+          <stop offset="100%" stop-color="#ffb773"/>
+        </linearGradient>
+        <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#fff6c8" stop-opacity="1"/>
+          <stop offset="40%" stop-color="#ffd96a" stop-opacity="0.7"/>
+          <stop offset="100%" stop-color="#ffb060" stop-opacity="0"/>
         </radialGradient>
       </defs>
-      <rect width="1920" height="1080" fill="url(#sky-glow)"/>
-      <circle cx="1500" cy="220" r="260" fill="url(#moon-glow)"/>
-      <circle cx="1500" cy="220" r="42" fill="#f5d8a8" opacity="0.85"/>
-      <g fill="#f5d8a8" opacity="0.6">
-        <circle cx="180" cy="120" r="1"/><circle cx="320" cy="90" r="1.2"/>
-        <circle cx="560" cy="160" r="0.9"/><circle cx="780" cy="70" r="1.3"/>
-        <circle cx="1100" cy="130" r="1"/><circle cx="1280" cy="80" r="1.1"/>
-        <circle cx="1700" cy="350" r="0.8"/><circle cx="1820" cy="170" r="1"/>
-        <circle cx="420" cy="220" r="0.7"/><circle cx="920" cy="280" r="0.8"/>
-        <circle cx="1420" cy="460" r="0.9"/><circle cx="240" cy="380" r="0.7"/>
+      <rect width="1920" height="1080" fill="url(#sky-day)"/>
+      <!-- Sol -->
+      <circle cx="1480" cy="280" r="240" fill="url(#sun-glow)"/>
+      <circle cx="1480" cy="280" r="68" fill="#fff4c0"/>
+      <!-- Nubes (blobs blancos) -->
+      <g fill="#ffffff" opacity="0.85">
+        <ellipse cx="260"  cy="200" rx="140" ry="28"/>
+        <ellipse cx="300"  cy="185" rx="90"  ry="22"/>
+        <ellipse cx="780"  cy="150" rx="160" ry="30"/>
+        <ellipse cx="820"  cy="135" rx="100" ry="24"/>
+        <ellipse cx="1180" cy="220" rx="130" ry="26"/>
+        <ellipse cx="540"  cy="340" rx="110" ry="22"/>
+        <ellipse cx="1700" cy="440" rx="140" ry="24" opacity="0.6"/>
       </g>
     </svg>
 
-    <!-- Montañas distantes -->
+    <!-- MONTAÑAS LEJANAS (azul/gris atmosférico) -->
     <svg class="layer-mountains" data-depth="0.1" viewBox="0 0 1920 500" preserveAspectRatio="xMidYEnd slice">
       <defs>
-        <linearGradient id="mountain-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="#1a0d07"/>
-          <stop offset="100%" stop-color="#0a0604"/>
+        <linearGradient id="mountain-day" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#6e8ba8" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="#a8bed4" stop-opacity="0.7"/>
         </linearGradient>
       </defs>
-      <path d="M0,500 L0,340 L180,220 L340,300 L520,180 L720,290 L920,200 L1140,310 L1360,210 L1560,290 L1760,240 L1920,300 L1920,500 Z" fill="url(#mountain-grad)" opacity="0.75"/>
-    </svg>
-
-    <!-- Árboles lejanos -->
-    <svg class="layer-trees-far" data-depth="0.22" viewBox="0 0 1920 340" preserveAspectRatio="xMidYEnd slice">
-      <g fill="#0f0704" opacity="0.82">
-        <path d="M0,340 L0,230 Q60,190 120,220 Q180,180 240,215 Q300,175 360,210 Q420,170 480,205 Q540,170 600,200 Q660,170 720,200 Q780,170 840,205 Q900,175 960,210 Q1020,180 1080,215 Q1140,185 1200,215 Q1260,185 1320,210 Q1380,180 1440,210 Q1500,175 1560,205 Q1620,170 1680,205 Q1740,170 1800,210 Q1860,180 1920,215 L1920,340 Z"/>
+      <path d="M0,500 L0,340 L180,220 L340,300 L520,180 L720,290 L920,200 L1140,310 L1360,210 L1560,290 L1760,240 L1920,300 L1920,500 Z" fill="url(#mountain-day)"/>
+      <!-- Picos nevados -->
+      <g fill="#ffffff" opacity="0.7">
+        <path d="M500,195 L520,180 L540,210 Z"/>
+        <path d="M900,220 L920,200 L940,230 Z"/>
+        <path d="M1340,230 L1360,210 L1380,240 Z"/>
       </g>
     </svg>
 
-    <!-- Casa moderna de lujo con ventanas iluminadas -->
-    <svg class="layer-house" data-depth="0.45" viewBox="0 0 1920 600" preserveAspectRatio="xMidYEnd slice">
+    <!-- COLINAS VERDES MEDIAS -->
+    <svg class="layer-trees-far" data-depth="0.22" viewBox="0 0 1920 340" preserveAspectRatio="xMidYEnd slice">
       <defs>
-        <linearGradient id="house-facade" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#1c1410"/>
-          <stop offset="100%" stop-color="#0a0604"/>
+        <linearGradient id="hills-mid" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#6ba053"/>
+          <stop offset="100%" stop-color="#4c8540"/>
         </linearGradient>
-        <linearGradient id="house-wood" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#2a1a0d"/>
-          <stop offset="100%" stop-color="#1a100a"/>
+      </defs>
+      <path d="M0,340 L0,210 Q240,150 480,200 Q720,130 960,190 Q1200,140 1440,195 Q1680,150 1920,205 L1920,340 Z" fill="url(#hills-mid)"/>
+      <!-- Árboles redondos en colinas -->
+      <g fill="#3d6b33">
+        <circle cx="180"  cy="210" r="22"/>
+        <circle cx="240"  cy="215" r="18"/>
+        <circle cx="540"  cy="200" r="24"/>
+        <circle cx="600"  cy="205" r="20"/>
+        <circle cx="900"  cy="198" r="22"/>
+        <circle cx="1260" cy="200" r="24"/>
+        <circle cx="1320" cy="208" r="18"/>
+        <circle cx="1620" cy="200" r="22"/>
+        <circle cx="1680" cy="208" r="18"/>
+      </g>
+    </svg>
+
+    <!-- CASA MODERNA DE DÍA (clara, identificable) -->
+    <svg class="layer-house" data-depth="0.5" viewBox="0 0 1920 700" preserveAspectRatio="xMidYEnd slice">
+      <defs>
+        <linearGradient id="wall-main" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#fefbf5"/>
+          <stop offset="100%" stop-color="#e8ddc9"/>
         </linearGradient>
-        <radialGradient id="window-glow-grad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"  stop-color="#ffc98a" stop-opacity="1"/>
-          <stop offset="60%" stop-color="#ff9340" stop-opacity="0.5"/>
-          <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0"/>
-        </radialGradient>
+        <linearGradient id="wood-wall" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#c89467"/>
+          <stop offset="100%" stop-color="#9c6f45"/>
+        </linearGradient>
+        <linearGradient id="roof-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#463a34"/>
+          <stop offset="100%" stop-color="#2a231f"/>
+        </linearGradient>
+        <linearGradient id="window-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"  stop-color="#bde0f5"/>
+          <stop offset="100%" stop-color="#7cb8dc"/>
+        </linearGradient>
+        <linearGradient id="lawn-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#7bbd58"/>
+          <stop offset="100%" stop-color="#5d9a44"/>
+        </linearGradient>
+        <linearGradient id="pool-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#63c4e0"/>
+          <stop offset="100%" stop-color="#2b8aa6"/>
+        </linearGradient>
       </defs>
 
-      <!-- Silueta/terreno -->
-      <path d="M0,600 L0,480 L1920,480 L1920,600 Z" fill="#05040a"/>
+      <!-- CÉSPED -->
+      <rect x="0" y="430" width="1920" height="270" fill="url(#lawn-grad)"/>
+      <!-- Camino de entrada -->
+      <path d="M860,700 L1060,700 L1000,430 L920,430 Z" fill="#d6c6a8"/>
 
-      <!-- Casa principal (arquitectura moderna horizontal) -->
-      <g transform="translate(680, 240)">
-        <!-- Base volumen inferior amplia -->
-        <rect x="0" y="120" width="560" height="240" fill="url(#house-facade)"/>
-        <!-- Segundo piso cantilever -->
-        <rect x="80" y="40" width="400" height="110" fill="url(#house-wood)"/>
-        <!-- Techo plano horizontal -->
-        <rect x="60" y="30" width="440" height="14" fill="#0a0604"/>
-        <!-- Línea base -->
-        <rect x="-30" y="355" width="620" height="8" fill="#05040a"/>
-
-        <!-- Glows detrás de ventanas (ambient light) -->
-        <ellipse cx="180" cy="90" rx="90" ry="45" fill="url(#window-glow-grad)" class="window-glow"/>
-        <ellipse cx="380" cy="90" rx="90" ry="45" fill="url(#window-glow-grad)" class="window-glow-2"/>
-        <ellipse cx="140" cy="220" rx="110" ry="60" fill="url(#window-glow-grad)" class="window-glow"/>
-        <ellipse cx="420" cy="220" rx="110" ry="60" fill="url(#window-glow-grad)" class="window-glow-3"/>
-
-        <!-- Ventanas panorámicas (warm interior) -->
-        <rect x="110" y="60"  width="140" height="64" fill="#ffb567" opacity="0.88" class="window-glow"/>
-        <rect x="310" y="60"  width="140" height="64" fill="#ffa548" opacity="0.82" class="window-glow-2"/>
-        <rect x="40"  y="170" width="200" height="140" fill="#ffb065" opacity="0.9" class="window-glow"/>
-        <rect x="310" y="170" width="220" height="140" fill="#ffa040" opacity="0.85" class="window-glow-3"/>
-
-        <!-- Divisiones de ventanas (mullions) -->
-        <g stroke="#0a0604" stroke-width="2.5" fill="none">
-          <line x1="180" y1="60"  x2="180" y2="124"/>
-          <line x1="380" y1="60"  x2="380" y2="124"/>
-          <line x1="110" y1="95"  x2="250" y2="95"/>
-          <line x1="310" y1="95"  x2="450" y2="95"/>
-          <line x1="140" y1="170" x2="140" y2="310"/>
-          <line x1="40"  y1="240" x2="240" y2="240"/>
-          <line x1="370" y1="170" x2="370" y2="310"/>
-          <line x1="470" y1="170" x2="470" y2="310"/>
-          <line x1="310" y1="240" x2="530" y2="240"/>
+      <!-- CASA PRINCIPAL (moderna, 2 pisos, techo a dos aguas + volumen horizontal) -->
+      <g transform="translate(560, 170)">
+        <!-- Volumen izquierdo (madera horizontal) -->
+        <rect x="0" y="130" width="280" height="310" fill="url(#wood-wall)"/>
+        <!-- Líneas horizontales de madera -->
+        <g stroke="#6b4a2a" stroke-width="1.5" opacity="0.4">
+          <line x1="0" y1="160" x2="280" y2="160"/>
+          <line x1="0" y1="200" x2="280" y2="200"/>
+          <line x1="0" y1="240" x2="280" y2="240"/>
+          <line x1="0" y1="280" x2="280" y2="280"/>
+          <line x1="0" y1="320" x2="280" y2="320"/>
+          <line x1="0" y1="360" x2="280" y2="360"/>
+          <line x1="0" y1="400" x2="280" y2="400"/>
         </g>
 
-        <!-- Reflejo/charco de luz en el suelo frente a ventanas -->
-        <ellipse cx="280" cy="370" rx="260" ry="18" fill="#ff9340" opacity="0.22"/>
+        <!-- Volumen principal (blanco) -->
+        <rect x="260" y="80" width="480" height="360" fill="url(#wall-main)"/>
+
+        <!-- Techo a dos aguas sobre volumen principal -->
+        <polygon points="240,80 500,-20 760,80" fill="url(#roof-grad)"/>
+        <!-- Techo plano sobre madera -->
+        <rect x="-12" y="118" width="292" height="16" fill="#2a231f"/>
+
+        <!-- VENTANAS PANORÁMICAS (reflejando cielo) -->
+        <!-- Ventana grande central piso 2 -->
+        <rect x="360" y="130" width="280" height="120" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
+        <line x1="500" y1="130" x2="500" y2="250" stroke="#2a231f" stroke-width="3"/>
+
+        <!-- Ventanas piso 1 derecha (ventanales piso-techo) -->
+        <rect x="310" y="270" width="170" height="160" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
+        <line x1="395" y1="270" x2="395" y2="430" stroke="#2a231f" stroke-width="3"/>
+        <rect x="510" y="270" width="210" height="160" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
+        <line x1="615" y1="270" x2="615" y2="430" stroke="#2a231f" stroke-width="3"/>
+
+        <!-- Ventanas en volumen de madera -->
+        <rect x="40"  y="170" width="90" height="60" fill="url(#window-sky)" stroke="#3a2816" stroke-width="3" class="window-glow"/>
+        <rect x="160" y="170" width="90" height="60" fill="url(#window-sky)" stroke="#3a2816" stroke-width="3" class="window-glow-2"/>
+
+        <!-- PUERTA PRINCIPAL -->
+        <rect x="100" y="300" width="80" height="140" fill="#3a2816"/>
+        <rect x="108" y="310" width="64" height="110" fill="#5c3d22"/>
+        <circle cx="162" cy="375" r="3" fill="#d4af6a"/>
+
+        <!-- Escalones de entrada -->
+        <rect x="80"  y="440" width="120" height="6"  fill="#d6c6a8"/>
+        <rect x="70"  y="446" width="140" height="6"  fill="#c4b292"/>
+
+        <!-- Chimenea pequeña -->
+        <rect x="460" y="-10" width="40" height="60" fill="url(#roof-grad)"/>
       </g>
 
-      <!-- Casa secundaria a la izquierda (más pequeña, profundidad) -->
-      <g transform="translate(180, 320)" opacity="0.85">
-        <rect x="0" y="60" width="240" height="120" fill="#120a07"/>
-        <rect x="30" y="20" width="180" height="50" fill="#1a0f09"/>
-        <rect x="30" y="85" width="80" height="55" fill="#ff9a48" opacity="0.78" class="window-glow-2"/>
-        <rect x="135" y="85" width="75" height="55" fill="#ffaa55" opacity="0.7" class="window-glow"/>
-        <rect x="60" y="38" width="120" height="22" fill="#ffb060" opacity="0.72" class="window-glow-3"/>
+      <!-- PISCINA al frente-derecha -->
+      <ellipse cx="1380" cy="570" rx="180" ry="32" fill="#1a6b80" opacity="0.6"/>
+      <rect x="1200" y="520" width="360" height="80" rx="8" fill="url(#pool-grad)"/>
+      <g stroke="#ffffff" stroke-width="1.5" opacity="0.45" fill="none">
+        <path d="M1220,540 Q1260,535 1300,540 T1380,540 T1460,540 T1540,540"/>
+        <path d="M1220,560 Q1260,555 1300,560 T1380,560 T1460,560 T1540,560"/>
+        <path d="M1220,580 Q1260,575 1300,580 T1380,580 T1460,580 T1540,580"/>
       </g>
 
-      <!-- Casa a la derecha -->
-      <g transform="translate(1420, 310)" opacity="0.82">
-        <rect x="0" y="70" width="300" height="120" fill="#100805"/>
-        <rect x="20" y="40" width="260" height="40" fill="#1a0e08"/>
-        <rect x="40" y="100" width="110" height="70" fill="#ffa048" opacity="0.8" class="window-glow-3"/>
-        <rect x="170" y="100" width="110" height="70" fill="#ff9a40" opacity="0.75" class="window-glow"/>
-        <rect x="50" y="50" width="210" height="20" fill="#ffb060" opacity="0.7" class="window-glow-2"/>
+      <!-- Árboles de jardín cerca de casa -->
+      <g>
+        <!-- Árbol izquierdo -->
+        <rect x="420" y="460" width="14" height="60" fill="#5a3a22"/>
+        <circle cx="427" cy="450" r="44" fill="#5d9a44"/>
+        <circle cx="405" cy="445" r="32" fill="#6ba053"/>
+        <circle cx="450" cy="438" r="36" fill="#6ba053"/>
+        <!-- Árbol derecho junto a casa -->
+        <rect x="1360" y="440" width="16" height="90" fill="#5a3a22"/>
+        <circle cx="1368" cy="430" r="52" fill="#5d9a44"/>
+        <circle cx="1342" cy="420" r="38" fill="#6ba053"/>
+        <circle cx="1395" cy="418" r="40" fill="#6ba053"/>
+        <!-- Arbusto frontal -->
+        <ellipse cx="740" cy="610" rx="60" ry="18" fill="#4c8540"/>
+        <circle cx="720" cy="600" r="22" fill="#5d9a44"/>
+        <circle cx="760" cy="600" r="22" fill="#5d9a44"/>
+      </g>
+
+      <!-- Cerca blanca baja frontal -->
+      <g stroke="#fefbf5" stroke-width="3" fill="#fefbf5" opacity="0.9">
+        <rect x="50"   y="600" width="4" height="30"/>
+        <rect x="110"  y="600" width="4" height="30"/>
+        <rect x="170"  y="600" width="4" height="30"/>
+        <rect x="230"  y="600" width="4" height="30"/>
+        <line x1="40" y1="610" x2="270" y2="610"/>
+        <rect x="1700" y="600" width="4" height="30"/>
+        <rect x="1760" y="600" width="4" height="30"/>
+        <rect x="1820" y="600" width="4" height="30"/>
+        <rect x="1880" y="600" width="4" height="30"/>
+        <line x1="1690" y1="610" x2="1900" y2="610"/>
       </g>
     </svg>
 
-    <!-- Foreground: vegetación cerca cámara -->
-    <svg class="layer-foreground" data-depth="0.85" viewBox="0 0 1920 260" preserveAspectRatio="xMidYEnd slice">
-      <g fill="#050302">
-        <path d="M0,260 L0,180 Q80,140 160,165 Q240,130 320,160 Q400,125 480,155 Q560,120 640,150 Q720,115 800,145 Q880,110 960,140 Q1040,105 1120,140 Q1200,105 1280,140 Q1360,110 1440,145 Q1520,115 1600,150 Q1680,120 1760,155 Q1840,125 1920,160 L1920,260 Z"/>
-        <!-- Hierba/siluetas arbustos -->
-        <path d="M120,200 L130,170 L140,200 Z"/>
-        <path d="M280,195 L295,155 L310,195 Z"/>
-        <path d="M520,198 L533,165 L548,198 Z"/>
-        <path d="M860,195 L875,158 L890,195 Z"/>
-        <path d="M1240,197 L1255,162 L1270,197 Z"/>
-        <path d="M1560,195 L1575,160 L1590,195 Z"/>
-        <path d="M1780,200 L1795,170 L1810,200 Z"/>
+    <!-- FOREGROUND: césped + flores cerca de cámara -->
+    <svg class="layer-foreground" data-depth="0.92" viewBox="0 0 1920 220" preserveAspectRatio="xMidYEnd slice">
+      <defs>
+        <linearGradient id="fg-grass" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#5d9a44"/>
+          <stop offset="100%" stop-color="#3d6b33"/>
+        </linearGradient>
+      </defs>
+      <path d="M0,220 L0,110 Q80,70 160,95 Q240,60 320,90 Q400,55 480,85 Q560,50 640,80 Q720,45 800,75 Q880,40 960,70 Q1040,35 1120,70 Q1200,35 1280,70 Q1360,40 1440,75 Q1520,45 1600,80 Q1680,50 1760,85 Q1840,55 1920,90 L1920,220 Z" fill="url(#fg-grass)"/>
+      <!-- Brizna de hierba -->
+      <g stroke="#3d6b33" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.85">
+        <path d="M80,140 Q82,115 85,100"/>
+        <path d="M220,135 Q225,110 232,95"/>
+        <path d="M380,140 Q378,115 374,100"/>
+        <path d="M540,138 Q544,112 550,95"/>
+        <path d="M720,140 Q722,115 725,100"/>
+        <path d="M900,138 Q905,112 912,95"/>
+        <path d="M1100,140 Q1098,115 1094,100"/>
+        <path d="M1280,138 Q1284,112 1290,95"/>
+        <path d="M1460,140 Q1462,115 1465,100"/>
+        <path d="M1640,138 Q1644,112 1650,95"/>
+        <path d="M1820,140 Q1818,115 1814,100"/>
+      </g>
+      <!-- Flores pequeñas -->
+      <g>
+        <circle cx="180"  cy="155" r="4" fill="#ffb8c8"/>
+        <circle cx="440"  cy="150" r="4" fill="#ffee6a"/>
+        <circle cx="680"  cy="155" r="4" fill="#ff9fc0"/>
+        <circle cx="980"  cy="150" r="4" fill="#ffee6a"/>
+        <circle cx="1240" cy="155" r="4" fill="#c98cff"/>
+        <circle cx="1540" cy="152" r="4" fill="#ffee6a"/>
+        <circle cx="1780" cy="155" r="4" fill="#ffb8c8"/>
       </g>
     </svg>
 
-    <!-- Partículas ambientales -->
-    <div class="particle" style="left: 12%; animation-duration: 18s; animation-delay: 0s;"></div>
-    <div class="particle" style="left: 28%; animation-duration: 22s; animation-delay: 4s;"></div>
-    <div class="particle" style="left: 44%; animation-duration: 20s; animation-delay: 8s;"></div>
-    <div class="particle" style="left: 62%; animation-duration: 24s; animation-delay: 2s;"></div>
-    <div class="particle" style="left: 78%; animation-duration: 19s; animation-delay: 11s;"></div>
-    <div class="particle" style="left: 88%; animation-duration: 23s; animation-delay: 6s;"></div>
+    <!-- Pájaros pequeños (ambient) -->
+    <div class="particle" style="left: 20%; top: 25%; width: 6px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 32s; animation-delay: 0s;"></div>
+    <div class="particle" style="left: 55%; top: 18%; width: 5px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 38s; animation-delay: 6s;"></div>
+    <div class="particle" style="left: 72%; top: 22%; width: 6px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 35s; animation-delay: 12s;"></div>
   </div>
 
   <div class="bg-aurora" aria-hidden="true"></div>
@@ -2769,9 +2860,9 @@
       let scrollY = 0;
       let ticking = false;
 
-      const MAX_SHIFT_X = 40;   // px — max horizontal drift for deepest layer
-      const MAX_SHIFT_Y = 25;   // px — max vertical drift from mouse
-      const SCROLL_RATE = 0.35; // how fast layers move on scroll (closer = faster)
+      const MAX_SHIFT_X = 120;  // px — max horizontal drift for deepest layer
+      const MAX_SHIFT_Y = 70;   // px — max vertical drift from mouse
+      const SCROLL_RATE = 0.45; // how fast layers move on scroll (closer = faster)
 
       function onMouseMove(e) {
         targetX = e.clientX / window.innerWidth;
@@ -2789,9 +2880,9 @@
         }
       }
       function update() {
-        // Smooth easing for mouse
-        mouseX += (targetX - mouseX) * 0.08;
-        mouseY += (targetY - mouseY) * 0.08;
+        // Smooth easing for mouse (higher = more responsive)
+        mouseX += (targetX - mouseX) * 0.14;
+        mouseY += (targetY - mouseY) * 0.14;
 
         const mx = (mouseX - 0.5) * 2; // -1..1
         const my = (mouseY - 0.5) * 2;
