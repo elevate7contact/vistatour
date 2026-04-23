@@ -115,6 +115,65 @@
       100% { transform: translate(-15vw, 15vh) scale(1.1); }
     }
 
+    /* ══════════════════════════════════════════════════════════════
+       PARALLAX SCENE — casa moderna con capas reactivas a mouse+scroll
+    ══════════════════════════════════════════════════════════════ */
+    .parallax-scene {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+      opacity: 0.55;
+      mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
+      -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
+    }
+    .parallax-scene svg {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 130vw;
+      min-width: 1400px;
+      height: auto;
+      transform: translate3d(-50%, 0, 0);
+      will-change: transform;
+      transition: transform 0.25s cubic-bezier(.2,.7,.2,1);
+    }
+    .parallax-scene .layer-sky      { z-index: 1; bottom: auto; top: 0; height: 100vh; width: 100vw; min-width: 100vw; left: 0; transform: translate3d(0,0,0); }
+    .parallax-scene .layer-mountains{ z-index: 2; }
+    .parallax-scene .layer-trees-far{ z-index: 3; }
+    .parallax-scene .layer-house    { z-index: 4; }
+    .parallax-scene .layer-foreground{z-index: 5; width: 140vw; min-width: 1500px; }
+
+    /* Warm glow pulsing from house windows */
+    @keyframes window-pulse {
+      0%, 100% { opacity: 0.75; }
+      50%      { opacity: 1; }
+    }
+    .parallax-scene .window-glow { animation: window-pulse 5s ease-in-out infinite; transform-origin: center; }
+    .parallax-scene .window-glow-2 { animation: window-pulse 7s ease-in-out infinite 1.2s; }
+    .parallax-scene .window-glow-3 { animation: window-pulse 6s ease-in-out infinite 2.4s; }
+
+    /* Floating ambient particles */
+    .parallax-scene .particle {
+      position: absolute;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(255,180,100,0.6);
+      box-shadow: 0 0 8px rgba(255,160,80,0.5);
+      animation: float-up linear infinite;
+    }
+    @keyframes float-up {
+      0%   { transform: translate3d(0, 100vh, 0); opacity: 0; }
+      10%  { opacity: 0.8; }
+      90%  { opacity: 0.8; }
+      100% { transform: translate3d(20vw, -10vh, 0); opacity: 0; }
+    }
+
+    @media (max-width: 900px) {
+      .parallax-scene { opacity: 0.35; }
+    }
+
     /* Subtle grain — adds texture like premium editorial sites */
     .bg-grain {
       position: fixed;
@@ -2192,6 +2251,157 @@
 ═══════════════════════════════════════════════ -->
 <div id="upload-view" class="view">
   <div class="upload-bg"></div>
+
+  <!-- Parallax scene: casa moderna con capas reactivas -->
+  <div class="parallax-scene" aria-hidden="true">
+    <!-- Cielo con gradiente -->
+    <svg class="layer-sky" data-depth="0.02" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="sky-glow" cx="50%" cy="75%" r="70%">
+          <stop offset="0%"  stop-color="#2a1408" stop-opacity="0.9"/>
+          <stop offset="40%" stop-color="#15090a" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#0a0604" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="moon-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#f5d8a8" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="#f5d8a8" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="1920" height="1080" fill="url(#sky-glow)"/>
+      <circle cx="1500" cy="220" r="260" fill="url(#moon-glow)"/>
+      <circle cx="1500" cy="220" r="42" fill="#f5d8a8" opacity="0.85"/>
+      <g fill="#f5d8a8" opacity="0.6">
+        <circle cx="180" cy="120" r="1"/><circle cx="320" cy="90" r="1.2"/>
+        <circle cx="560" cy="160" r="0.9"/><circle cx="780" cy="70" r="1.3"/>
+        <circle cx="1100" cy="130" r="1"/><circle cx="1280" cy="80" r="1.1"/>
+        <circle cx="1700" cy="350" r="0.8"/><circle cx="1820" cy="170" r="1"/>
+        <circle cx="420" cy="220" r="0.7"/><circle cx="920" cy="280" r="0.8"/>
+        <circle cx="1420" cy="460" r="0.9"/><circle cx="240" cy="380" r="0.7"/>
+      </g>
+    </svg>
+
+    <!-- Montañas distantes -->
+    <svg class="layer-mountains" data-depth="0.1" viewBox="0 0 1920 500" preserveAspectRatio="xMidYEnd slice">
+      <defs>
+        <linearGradient id="mountain-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#1a0d07"/>
+          <stop offset="100%" stop-color="#0a0604"/>
+        </linearGradient>
+      </defs>
+      <path d="M0,500 L0,340 L180,220 L340,300 L520,180 L720,290 L920,200 L1140,310 L1360,210 L1560,290 L1760,240 L1920,300 L1920,500 Z" fill="url(#mountain-grad)" opacity="0.75"/>
+    </svg>
+
+    <!-- Árboles lejanos -->
+    <svg class="layer-trees-far" data-depth="0.22" viewBox="0 0 1920 340" preserveAspectRatio="xMidYEnd slice">
+      <g fill="#0f0704" opacity="0.82">
+        <path d="M0,340 L0,230 Q60,190 120,220 Q180,180 240,215 Q300,175 360,210 Q420,170 480,205 Q540,170 600,200 Q660,170 720,200 Q780,170 840,205 Q900,175 960,210 Q1020,180 1080,215 Q1140,185 1200,215 Q1260,185 1320,210 Q1380,180 1440,210 Q1500,175 1560,205 Q1620,170 1680,205 Q1740,170 1800,210 Q1860,180 1920,215 L1920,340 Z"/>
+      </g>
+    </svg>
+
+    <!-- Casa moderna de lujo con ventanas iluminadas -->
+    <svg class="layer-house" data-depth="0.45" viewBox="0 0 1920 600" preserveAspectRatio="xMidYEnd slice">
+      <defs>
+        <linearGradient id="house-facade" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stop-color="#1c1410"/>
+          <stop offset="100%" stop-color="#0a0604"/>
+        </linearGradient>
+        <linearGradient id="house-wood" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#2a1a0d"/>
+          <stop offset="100%" stop-color="#1a100a"/>
+        </linearGradient>
+        <radialGradient id="window-glow-grad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#ffc98a" stop-opacity="1"/>
+          <stop offset="60%" stop-color="#ff9340" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Silueta/terreno -->
+      <path d="M0,600 L0,480 L1920,480 L1920,600 Z" fill="#05040a"/>
+
+      <!-- Casa principal (arquitectura moderna horizontal) -->
+      <g transform="translate(680, 240)">
+        <!-- Base volumen inferior amplia -->
+        <rect x="0" y="120" width="560" height="240" fill="url(#house-facade)"/>
+        <!-- Segundo piso cantilever -->
+        <rect x="80" y="40" width="400" height="110" fill="url(#house-wood)"/>
+        <!-- Techo plano horizontal -->
+        <rect x="60" y="30" width="440" height="14" fill="#0a0604"/>
+        <!-- Línea base -->
+        <rect x="-30" y="355" width="620" height="8" fill="#05040a"/>
+
+        <!-- Glows detrás de ventanas (ambient light) -->
+        <ellipse cx="180" cy="90" rx="90" ry="45" fill="url(#window-glow-grad)" class="window-glow"/>
+        <ellipse cx="380" cy="90" rx="90" ry="45" fill="url(#window-glow-grad)" class="window-glow-2"/>
+        <ellipse cx="140" cy="220" rx="110" ry="60" fill="url(#window-glow-grad)" class="window-glow"/>
+        <ellipse cx="420" cy="220" rx="110" ry="60" fill="url(#window-glow-grad)" class="window-glow-3"/>
+
+        <!-- Ventanas panorámicas (warm interior) -->
+        <rect x="110" y="60"  width="140" height="64" fill="#ffb567" opacity="0.88" class="window-glow"/>
+        <rect x="310" y="60"  width="140" height="64" fill="#ffa548" opacity="0.82" class="window-glow-2"/>
+        <rect x="40"  y="170" width="200" height="140" fill="#ffb065" opacity="0.9" class="window-glow"/>
+        <rect x="310" y="170" width="220" height="140" fill="#ffa040" opacity="0.85" class="window-glow-3"/>
+
+        <!-- Divisiones de ventanas (mullions) -->
+        <g stroke="#0a0604" stroke-width="2.5" fill="none">
+          <line x1="180" y1="60"  x2="180" y2="124"/>
+          <line x1="380" y1="60"  x2="380" y2="124"/>
+          <line x1="110" y1="95"  x2="250" y2="95"/>
+          <line x1="310" y1="95"  x2="450" y2="95"/>
+          <line x1="140" y1="170" x2="140" y2="310"/>
+          <line x1="40"  y1="240" x2="240" y2="240"/>
+          <line x1="370" y1="170" x2="370" y2="310"/>
+          <line x1="470" y1="170" x2="470" y2="310"/>
+          <line x1="310" y1="240" x2="530" y2="240"/>
+        </g>
+
+        <!-- Reflejo/charco de luz en el suelo frente a ventanas -->
+        <ellipse cx="280" cy="370" rx="260" ry="18" fill="#ff9340" opacity="0.22"/>
+      </g>
+
+      <!-- Casa secundaria a la izquierda (más pequeña, profundidad) -->
+      <g transform="translate(180, 320)" opacity="0.85">
+        <rect x="0" y="60" width="240" height="120" fill="#120a07"/>
+        <rect x="30" y="20" width="180" height="50" fill="#1a0f09"/>
+        <rect x="30" y="85" width="80" height="55" fill="#ff9a48" opacity="0.78" class="window-glow-2"/>
+        <rect x="135" y="85" width="75" height="55" fill="#ffaa55" opacity="0.7" class="window-glow"/>
+        <rect x="60" y="38" width="120" height="22" fill="#ffb060" opacity="0.72" class="window-glow-3"/>
+      </g>
+
+      <!-- Casa a la derecha -->
+      <g transform="translate(1420, 310)" opacity="0.82">
+        <rect x="0" y="70" width="300" height="120" fill="#100805"/>
+        <rect x="20" y="40" width="260" height="40" fill="#1a0e08"/>
+        <rect x="40" y="100" width="110" height="70" fill="#ffa048" opacity="0.8" class="window-glow-3"/>
+        <rect x="170" y="100" width="110" height="70" fill="#ff9a40" opacity="0.75" class="window-glow"/>
+        <rect x="50" y="50" width="210" height="20" fill="#ffb060" opacity="0.7" class="window-glow-2"/>
+      </g>
+    </svg>
+
+    <!-- Foreground: vegetación cerca cámara -->
+    <svg class="layer-foreground" data-depth="0.85" viewBox="0 0 1920 260" preserveAspectRatio="xMidYEnd slice">
+      <g fill="#050302">
+        <path d="M0,260 L0,180 Q80,140 160,165 Q240,130 320,160 Q400,125 480,155 Q560,120 640,150 Q720,115 800,145 Q880,110 960,140 Q1040,105 1120,140 Q1200,105 1280,140 Q1360,110 1440,145 Q1520,115 1600,150 Q1680,120 1760,155 Q1840,125 1920,160 L1920,260 Z"/>
+        <!-- Hierba/siluetas arbustos -->
+        <path d="M120,200 L130,170 L140,200 Z"/>
+        <path d="M280,195 L295,155 L310,195 Z"/>
+        <path d="M520,198 L533,165 L548,198 Z"/>
+        <path d="M860,195 L875,158 L890,195 Z"/>
+        <path d="M1240,197 L1255,162 L1270,197 Z"/>
+        <path d="M1560,195 L1575,160 L1590,195 Z"/>
+        <path d="M1780,200 L1795,170 L1810,200 Z"/>
+      </g>
+    </svg>
+
+    <!-- Partículas ambientales -->
+    <div class="particle" style="left: 12%; animation-duration: 18s; animation-delay: 0s;"></div>
+    <div class="particle" style="left: 28%; animation-duration: 22s; animation-delay: 4s;"></div>
+    <div class="particle" style="left: 44%; animation-duration: 20s; animation-delay: 8s;"></div>
+    <div class="particle" style="left: 62%; animation-duration: 24s; animation-delay: 2s;"></div>
+    <div class="particle" style="left: 78%; animation-duration: 19s; animation-delay: 11s;"></div>
+    <div class="particle" style="left: 88%; animation-duration: 23s; animation-delay: 6s;"></div>
+  </div>
+
   <div class="bg-aurora" aria-hidden="true"></div>
   <div class="bg-grain" aria-hidden="true"></div>
 
@@ -2538,7 +2748,87 @@
         slot.appendChild(formWrap);
         formWrap.style.display = 'block';
       }
+      initParallaxScene();
     });
+
+    // ══════════════════════════════════════════════════════════════
+    //  PARALLAX SCENE — mouse tilt + scroll push-in
+    // ══════════════════════════════════════════════════════════════
+    function initParallaxScene() {
+      const scene = document.querySelector('.parallax-scene');
+      if (!scene) return;
+      const layers = Array.from(scene.querySelectorAll('svg[data-depth]'));
+      if (!layers.length) return;
+
+      // Skip expensive effects on reduced-motion
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (prefersReduced) return;
+
+      let mouseX = 0.5, mouseY = 0.5; // normalized 0..1
+      let targetX = 0.5, targetY = 0.5;
+      let scrollY = 0;
+      let ticking = false;
+
+      const MAX_SHIFT_X = 40;   // px — max horizontal drift for deepest layer
+      const MAX_SHIFT_Y = 25;   // px — max vertical drift from mouse
+      const SCROLL_RATE = 0.35; // how fast layers move on scroll (closer = faster)
+
+      function onMouseMove(e) {
+        targetX = e.clientX / window.innerWidth;
+        targetY = e.clientY / window.innerHeight;
+        requestTick();
+      }
+      function onScroll() {
+        scrollY = window.scrollY || window.pageYOffset || 0;
+        requestTick();
+      }
+      function requestTick() {
+        if (!ticking) {
+          requestAnimationFrame(update);
+          ticking = true;
+        }
+      }
+      function update() {
+        // Smooth easing for mouse
+        mouseX += (targetX - mouseX) * 0.08;
+        mouseY += (targetY - mouseY) * 0.08;
+
+        const mx = (mouseX - 0.5) * 2; // -1..1
+        const my = (mouseY - 0.5) * 2;
+
+        layers.forEach(layer => {
+          const depth = parseFloat(layer.dataset.depth) || 0;
+          const tx = -mx * depth * MAX_SHIFT_X;
+          const ty = -my * depth * MAX_SHIFT_Y + (scrollY * depth * SCROLL_RATE);
+          // The sky layer is absolutely positioned differently — only offset it subtly
+          if (layer.classList.contains('layer-sky')) {
+            layer.style.transform = `translate3d(${tx * 0.4}px, ${ty * 0.3}px, 0)`;
+          } else {
+            layer.style.transform = `translate3d(calc(-50% + ${tx}px), ${ty}px, 0)`;
+          }
+        });
+
+        // Keep easing while mouse is still moving toward target
+        if (Math.abs(targetX - mouseX) > 0.002 || Math.abs(targetY - mouseY) > 0.002) {
+          requestAnimationFrame(update);
+        } else {
+          ticking = false;
+        }
+      }
+
+      window.addEventListener('mousemove', onMouseMove, { passive: true });
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('touchmove', e => {
+        if (e.touches && e.touches[0]) {
+          targetX = e.touches[0].clientX / window.innerWidth;
+          targetY = e.touches[0].clientY / window.innerHeight;
+          requestTick();
+        }
+      }, { passive: true });
+
+      // Kickstart
+      update();
+    }
 
     // Sube fotos a Supabase Storage y transiciona a la vista del formulario.
     window.uploadAndContinue = async function () {
