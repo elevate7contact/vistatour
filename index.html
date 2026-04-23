@@ -8,14 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-    }
-  }
-  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -2640,14 +2632,18 @@
       isAnimating: false,
       autoplay: false,
       autoplayTimer: null,
-      layers: { a: null, b: null },
-      activeLayer: 'a',
-      lowQuality: false,
-      dragging: false,
-      dragStart: { x: 0, y: 0 },
-      currentPan: { x: 0, y: 0 },
-      targetPan: { x: 0, y: 0 },
       rafId: null,
+      // CSS 3D engine state
+      rig: null,
+      sceneCurrent: null,
+      sceneNext: null,
+      yaw: 0, targetYaw: 0,
+      pitch: 0, targetPitch: 0,
+      dolly: 0, targetDolly: 0,
+      manualYaw: 0,
+      keys: { w:false, s:false, a:false, d:false, up:false, down:false, left:false, right:false },
+      reducedMotion: false,
+      hintTimer: null,
     };
 
     function buildWalkNodes() {
@@ -2659,95 +2655,38 @@
         isVideo: !!room.isVideo,
         name: room.name || (ROOM_TYPES[room.type] && ROOM_TYPES[room.type].label) || `Espacio ${i + 1}`,
         type: room.type,
-        icon: (ROOM_TYPES[room.type] && ROOM_TYPES[room.type].icon) || '🏠',
+        icon: (ROOM_TYPES[room.type] && ROOM_TYPES[room.type].icon) || '',
       }));
     }
 
-    // ── POV engine state ─────────────────────────────────────────────
-    const POV = {
-      enabled: false,
-      THREE: null,
-      scene: null,
-      camera: null,
-      renderer: null,
-      canvas: null,
-      meshCurrent: null,
-      meshNext: null,
-      textures: [],           // cached THREE.Texture per node
-      rafId: null,
-      // camera look state (yaw/pitch in radians)
-      yaw: 0, pitch: 0,
-      targetYaw: 0, targetPitch: 0,
-      // dolly position (z inside current node, negative = forward-into-image)
-      dolly: 0, targetDolly: 0,
-      // input
-      keys: { w:false, a:false, s:false, d:false, up:false, down:false, left:false, right:false },
-      pointerLocked: false,
-      dragging: false, dragPrev: { x:0, y:0 },
-      // transition
-      transitioning: false,
-      transitionT: 0,
-      transitionDir: 1,
-      pendingIndex: -1,
-      // timings
-      forwardThreshold: -1.3,     // when dolly reaches this, trigger next
-      backwardThreshold: 1.3,
-      lastTime: 0,
-    };
-
-    function enterWalkingMode() {
+    // ── CSS 3D engine ────────────────────────────────────────────────
+    async function enterWalkingMode() {
       if (typeof rooms === 'undefined' || !rooms || rooms.length === 0) {
-        alert('Sube al menos una foto para activar el Modo Caminar.');
+        alert('Sube al menos una foto para activar el Modo Paseo.');
         return;
       }
       Walk.nodes = buildWalkNodes();
-      if (!Walk.nodes.length) { alert('No hay imágenes válidas para el Modo Caminar.'); return; }
+      if (!Walk.nodes.length) { alert('No hay imágenes válidas para el Modo Paseo.'); return; }
       const startIdx = (typeof currentRoomIndex === 'number' ? currentRoomIndex : 0);
       Walk.currentIndex = Math.max(0, Math.min(startIdx, Walk.nodes.length - 1));
       Walk.visited = new Set([Walk.currentIndex]);
-      Walk.layers.a = document.getElementById('walk-layer-a');
-      Walk.layers.b = document.getElementById('walk-layer-b');
-      Walk.activeLayer = 'a';
       Walk.isAnimating = false;
+      Walk.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       const view = document.getElementById('walking-view');
       view.classList.add('active');
 
-      // Always render the legacy carrousel first (acts as instant visual + fallback).
-      renderWalkNode(Walk.layers.a, Walk.nodes[Walk.currentIndex], true);
-      Walk.layers.a.className = 'walk-layer current idle';
-      Walk.layers.b.className = 'walk-layer next';
-      Walk.layers.b.innerHTML = '';
+      Walk.rig         = document.getElementById('walk-rig');
+      Walk.sceneCurrent = document.getElementById('walk-scene-current');
+      Walk.sceneNext    = document.getElementById('walk-scene-next');
 
-      updateWalkHUD();
-      preloadNeighbors();
+      // Reset camera state
+      Walk.yaw = Walk.targetYaw = 0;
+      Walk.pitch = Walk.targetPitch = 0;
+      Walk.dolly = Walk.targetDolly = 0;
+      Walk.manualYaw = 0;
 
-      // Boot the POV engine. If WebGL/Three fails, keep the legacy carrousel.
-      bootPOVEngine().catch(err => {
-        console.warn('[Paseo POV] fallback al carrusel:', err);
-        attachWalkInputs(); // legacy inputs
-      });
-
-      const hint = document.getElementById('walk-hint');
-      if (hint) {
-        hint.style.animation = 'none';
-        void hint.offsetWidth;
-        hint.style.animation = '';
-      }
-    }
-
-    function exitWalkingMode() {
-      const view = document.getElementById('walking-view');
-      view.classList.remove('active');
-      view.classList.remove('pov-ready');
-      stopWalkAutoplay();
-      detachWalkInputs();
-      teardownPOVEngine();
-      if (Walk.rafId) cancelAnimationFrame(Walk.rafId);
-    }
-
-    // ── POV engine boot ──────────────────────────────────────────────
-    async function bootPOVEngine() {
+      // Loading screen + preload all node images
       const loader = document.getElementById('walk-loader');
       const loaderFill = document.getElementById('walk-loader-fill');
       const loaderCount = document.getElementById('walk-loader-count');
@@ -2755,269 +2694,229 @@
       loaderFill.style.width = '0%';
       loaderCount.textContent = `0 / ${Walk.nodes.length}`;
 
-      let THREE;
       try {
-        THREE = await import('three');
+        await preloadAllNodes((done, total) => {
+          loaderFill.style.width = `${Math.round((done / total) * 100)}%`;
+          loaderCount.textContent = `${done} / ${total}`;
+        });
       } catch (e) {
-        loader.classList.remove('visible');
-        throw new Error('Three.js no pudo cargarse');
+        console.warn('[Paseo] preload warn', e);
       }
 
-      const canvas = document.getElementById('walk-canvas');
-      if (!canvas) { loader.classList.remove('visible'); throw new Error('canvas ausente'); }
-
-      let renderer;
       try {
-        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-      } catch (e) {
-        loader.classList.remove('visible');
-        throw new Error('WebGL no disponible');
-      }
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.setClearColor(0x000000, 0);
-      const w = canvas.clientWidth || window.innerWidth;
-      const h = canvas.clientHeight || window.innerHeight;
-      renderer.setSize(w, h, false);
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 200);
-      camera.position.set(0, 0, 2.6);
-
-      POV.THREE = THREE;
-      POV.scene = scene;
-      POV.camera = camera;
-      POV.renderer = renderer;
-      POV.canvas = canvas;
-      POV.textures = new Array(Walk.nodes.length).fill(null);
-      POV.yaw = 0; POV.pitch = 0; POV.targetYaw = 0; POV.targetPitch = 0;
-      POV.dolly = 0; POV.targetDolly = 0;
-
-      // Preload all textures with progress
-      const loadImgAsTexture = (src) => new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          const tex = new THREE.Texture(img);
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.needsUpdate = true;
-          tex.minFilter = THREE.LinearFilter;
-          tex.magFilter = THREE.LinearFilter;
-          resolve(tex);
-        };
-        img.onerror = () => resolve(null);
-        img.src = src;
-      });
-
-      for (let i = 0; i < Walk.nodes.length; i++) {
-        const node = Walk.nodes[i];
-        if (!node.isVideo) {
-          const tex = await loadImgAsTexture(node.src);
-          POV.textures[i] = tex;
-        }
-        loaderFill.style.width = `${Math.round(((i + 1) / Walk.nodes.length) * 100)}%`;
-        loaderCount.textContent = `${i + 1} / ${Walk.nodes.length}`;
+        buildScene(Walk.sceneCurrent, Walk.nodes[Walk.currentIndex]);
+        Walk.sceneCurrent.classList.add('current');
+        Walk.sceneNext.classList.remove('current');
+        Walk.sceneNext.innerHTML = '';
+      } catch (err) {
+        console.error('[Paseo CSS3D] fallback', err);
+        // Fallback: single flat image
+        Walk.sceneCurrent.innerHTML = '';
+        const fb = document.createElement('div');
+        fb.className = 'walk-depth walk-depth-mid';
+        fb.style.backgroundImage = `url("${Walk.nodes[Walk.currentIndex].src}")`;
+        fb.style.transform = 'translateZ(0)';
+        Walk.sceneCurrent.appendChild(fb);
       }
 
-      // Build initial mesh
-      POV.meshCurrent = buildDepthMesh(POV.textures[Walk.currentIndex]);
-      scene.add(POV.meshCurrent);
-
-      // Resize handler
-      POV._onResize = () => {
-        const W = canvas.clientWidth || window.innerWidth;
-        const H = canvas.clientHeight || window.innerHeight;
-        renderer.setSize(W, H, false);
-        camera.aspect = W / H;
-        camera.updateProjectionMatrix();
-      };
-      window.addEventListener('resize', POV._onResize);
-
-      // Input wiring
-      attachPOVInputs();
-
-      POV.enabled = true;
-      const view = document.getElementById('walking-view');
-      view.classList.add('pov-ready');
       loader.classList.remove('visible');
-
-      // Show controls hint for 5s
-      const povHint = document.getElementById('walk-pov-hint');
-      if (povHint) {
-        povHint.classList.add('visible');
-        setTimeout(() => povHint.classList.remove('visible'), 5000);
-      }
-
-      // Render loop
-      POV.lastTime = performance.now();
-      renderLoop();
-
-      // AI-gap button visibility (stub: show when forward exists)
-      updateAIGapButton();
-    }
-
-    function buildDepthMesh(texture) {
-      const THREE = POV.THREE;
-      if (!texture) {
-        // empty placeholder plane
-        const geom = new THREE.PlaneGeometry(3.2, 1.8, 1, 1);
-        const mat = new THREE.MeshBasicMaterial({ color: 0x1B1815 });
-        return new THREE.Mesh(geom, mat);
-      }
-      // Aspect-ratio aware
-      const img = texture.image;
-      const aspect = (img && img.width && img.height) ? (img.width / img.height) : (16/9);
-      const W = 3.4, H = W / aspect;
-      const SEG = 80;
-      const geom = new THREE.PlaneGeometry(W, H, SEG, SEG);
-
-      // Synthetic depth: vignette + vertical floor/ceiling bias.
-      // Center is "deeper" (farther into screen), edges closer to viewer.
-      const pos = geom.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i) / (W * 0.5); // -1..1
-        const y = pos.getY(i) / (H * 0.5); // -1..1
-        // Radial depth (center farther away)
-        const r = Math.min(1, Math.sqrt(x*x + y*y));
-        const radial = (1 - r) * 0.55;       // center pushes back up to 0.55
-        // Vertical bias: floor (y<0) a bit closer, ceiling (y>0) a bit farther
-        const vertical = -y * 0.12;
-        const z = -(radial + vertical);      // negative z = farther from camera
-        pos.setZ(i, z);
-      }
-      geom.computeVertexNormals();
-
-      const mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.set(0, 0, 0);
-      return mesh;
-    }
-
-    function renderLoop() {
-      if (!POV.enabled) return;
-      const now = performance.now();
-      const dt = Math.min(0.05, (now - POV.lastTime) / 1000);
-      POV.lastTime = now;
-
-      // Keyboard-driven targets
-      const moveSpeed = 1.8;  // units/sec
-      const lookSpeed = 1.3;  // rad/sec for arrow-look
-      const k = POV.keys;
-      if (!POV.transitioning) {
-        if (k.w || k.up)    POV.targetDolly -= moveSpeed * dt;
-        if (k.s || k.down)  POV.targetDolly += moveSpeed * dt;
-        if (k.a)            POV.targetYaw   += lookSpeed * dt;
-        if (k.d)            POV.targetYaw   -= lookSpeed * dt;
-        if (k.left)         POV.targetYaw   += lookSpeed * dt;
-        if (k.right)        POV.targetYaw   -= lookSpeed * dt;
-      }
-
-      // Clamp pitch
-      const PITCH_MAX = Math.PI * 0.32;
-      POV.targetPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, POV.targetPitch));
-      const YAW_MAX = Math.PI * 0.45;
-      POV.targetYaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, POV.targetYaw));
-
-      // Smooth
-      POV.yaw   += (POV.targetYaw   - POV.yaw)   * Math.min(1, dt * 8);
-      POV.pitch += (POV.targetPitch - POV.pitch) * Math.min(1, dt * 8);
-      POV.dolly += (POV.targetDolly - POV.dolly) * Math.min(1, dt * 6);
-
-      // Apply to camera
-      const cam = POV.camera;
-      cam.rotation.order = 'YXZ';
-      cam.rotation.y = POV.yaw;
-      cam.rotation.x = POV.pitch;
-      cam.position.x = Math.sin(POV.yaw) * 0.15;
-      cam.position.y = -POV.pitch * 0.1;
-      cam.position.z = 2.6 + POV.dolly;
-
-      // Trigger transitions when past threshold
-      if (!POV.transitioning) {
-        if (POV.dolly < POV.forwardThreshold && Walk.currentIndex < Walk.nodes.length - 1) {
-          startPOVTransition(1);
-        } else if (POV.dolly > POV.backwardThreshold && Walk.currentIndex > 0) {
-          startPOVTransition(-1);
-        }
-      } else {
-        advancePOVTransition(dt);
-      }
-
-      POV.renderer.render(POV.scene, POV.camera);
-      POV.rafId = requestAnimationFrame(renderLoop);
-    }
-
-    function startPOVTransition(dir) {
-      const nextIdx = Walk.currentIndex + dir;
-      if (nextIdx < 0 || nextIdx >= Walk.nodes.length) return;
-      POV.transitioning = true;
-      POV.transitionT = 0;
-      POV.transitionDir = dir;
-      POV.pendingIndex = nextIdx;
-
-      // Build next mesh placed in depth (far if forward, near if backward)
-      const nextMesh = buildDepthMesh(POV.textures[nextIdx]);
-      nextMesh.position.z = dir === 1 ? -3.5 : 3.5;
-      nextMesh.material.opacity = 0;
-      nextMesh.material.transparent = true;
-      POV.meshNext = nextMesh;
-      POV.scene.add(nextMesh);
-    }
-
-    function advancePOVTransition(dt) {
-      POV.transitionT += dt / 0.8; // 800ms
-      const t = Math.min(1, POV.transitionT);
-      const ease = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; // easeInOutQuad
-      const dir = POV.transitionDir;
-
-      if (POV.meshCurrent) {
-        POV.meshCurrent.material.opacity = 1 - ease;
-        POV.meshCurrent.position.z = ease * (dir === 1 ? 3.0 : -3.0);
-      }
-      if (POV.meshNext) {
-        POV.meshNext.material.opacity = ease;
-        POV.meshNext.position.z = (dir === 1 ? -3.5 : 3.5) * (1 - ease);
-      }
-
-      if (t >= 1) finishPOVTransition();
-    }
-
-    function finishPOVTransition() {
-      if (POV.meshCurrent) {
-        POV.scene.remove(POV.meshCurrent);
-        POV.meshCurrent.geometry.dispose();
-        POV.meshCurrent.material.dispose();
-      }
-      POV.meshCurrent = POV.meshNext;
-      POV.meshNext = null;
-      if (POV.meshCurrent) POV.meshCurrent.material.opacity = 1;
-
-      Walk.currentIndex = POV.pendingIndex;
-      Walk.visited.add(Walk.currentIndex);
-      POV.pendingIndex = -1;
-      POV.transitioning = false;
-      POV.transitionT = 0;
-
-      // Reset camera dolly
-      POV.dolly = 0; POV.targetDolly = 0;
-      POV.yaw *= 0.3; POV.targetYaw = 0;
-      POV.pitch *= 0.3; POV.targetPitch = 0;
-
       updateWalkHUD();
       updateAIGapButton();
 
-      try {
-        const stats = JSON.parse(localStorage.getItem('walk_views') || '{}');
-        const id = Walk.nodes[Walk.currentIndex].id;
-        stats[id] = (stats[id] || 0) + 1;
-        localStorage.setItem('walk_views', JSON.stringify(stats));
-      } catch (e) {}
+      attachWalkInputs();
+      startWalkLoop();
+
+      // First-run hint (W A S D + mouse)
+      const povHint = document.getElementById('walk-pov-hint');
+      if (povHint) {
+        povHint.classList.add('visible');
+        clearTimeout(Walk.hintTimer);
+        Walk.hintTimer = setTimeout(() => povHint.classList.remove('visible'), 5000);
+      }
+    }
+
+    function exitWalkingMode() {
+      const view = document.getElementById('walking-view');
+      view.classList.remove('active');
+      stopWalkAutoplay();
+      detachWalkInputs();
+      if (Walk.rafId) { cancelAnimationFrame(Walk.rafId); Walk.rafId = null; }
+      // Clear scene DOM to free memory
+      if (Walk.sceneCurrent) Walk.sceneCurrent.innerHTML = '';
+      if (Walk.sceneNext)    Walk.sceneNext.innerHTML = '';
+    }
+
+    // ── Preload all node images ─────────────────────────────────────
+    function preloadAllNodes(onProgress) {
+      const srcs = Walk.nodes.filter(n => !n.isVideo).map(n => n.src);
+      let done = 0;
+      const total = Math.max(1, srcs.length);
+      return Promise.all(srcs.map(src => new Promise(res => {
+        const img = new Image();
+        img.onload = img.onerror = () => {
+          done++;
+          try { onProgress(done, total); } catch(e){}
+          res();
+        };
+        img.src = src;
+      })));
+    }
+
+    // ── Build CSS 3D scene for a node (3 depth layers) ──────────────
+    function buildScene(sceneEl, node) {
+      sceneEl.innerHTML = '';
+      if (!node) return;
+      // FAR layer: background blurred, pushed deep
+      const far = document.createElement('div');
+      far.className = 'walk-depth walk-depth-far';
+      far.style.backgroundImage = `url("${node.src}")`;
+      // MID layer: the main photo
+      const mid = document.createElement('div');
+      mid.className = 'walk-depth walk-depth-mid';
+      mid.style.backgroundImage = `url("${node.src}")`;
+      // NEAR layer: bottom-strip (floor) floated forward via mask
+      const near = document.createElement('div');
+      near.className = 'walk-depth walk-depth-near';
+      near.style.backgroundImage = `url("${node.src}")`;
+
+      sceneEl.appendChild(far);
+      sceneEl.appendChild(mid);
+      sceneEl.appendChild(near);
+    }
+
+    // ── Animation loop ──────────────────────────────────────────────
+    function startWalkLoop() {
+      if (Walk.rafId) cancelAnimationFrame(Walk.rafId);
+      let last = performance.now();
+      const FWD_TRIGGER = 180;
+      const BACK_TRIGGER = -110;
+      const MOVE_SPEED = 320; // px/sec along Z when holding W/S
+
+      function tick(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+
+        if (!Walk.isAnimating) {
+          const k = Walk.keys;
+          if (k.w || k.up)   Walk.targetDolly += MOVE_SPEED * dt;
+          if (k.s || k.down) Walk.targetDolly -= MOVE_SPEED * dt;
+          if (k.a || k.left)  Walk.manualYaw -= 45 * dt;
+          if (k.d || k.right) Walk.manualYaw += 45 * dt;
+          // Clamp manual yaw
+          Walk.manualYaw = Math.max(-35, Math.min(35, Walk.manualYaw));
+        }
+
+        // Ease current → target
+        Walk.yaw   += (Walk.targetYaw   + Walk.manualYaw - Walk.yaw)   * 0.10;
+        Walk.pitch += (Walk.targetPitch - Walk.pitch) * 0.10;
+        Walk.dolly += (Walk.targetDolly - Walk.dolly) * 0.12;
+
+        if (Walk.rig) {
+          Walk.rig.style.transform =
+            `translateZ(${Walk.dolly.toFixed(2)}px) ` +
+            `rotateX(${Walk.pitch.toFixed(3)}deg) ` +
+            `rotateY(${Walk.yaw.toFixed(3)}deg)`;
+        }
+
+        if (!Walk.isAnimating) {
+          if (Walk.dolly > FWD_TRIGGER && Walk.currentIndex < Walk.nodes.length - 1) {
+            doWalkTransition(1);
+          } else if (Walk.dolly < BACK_TRIGGER && Walk.currentIndex > 0) {
+            doWalkTransition(-1);
+          }
+        }
+
+        Walk.rafId = requestAnimationFrame(tick);
+      }
+      Walk.rafId = requestAnimationFrame(tick);
+    }
+
+    // ── Transition between nodes ────────────────────────────────────
+    function doWalkTransition(dir) {
+      const nextIdx = Walk.currentIndex + dir;
+      if (nextIdx < 0 || nextIdx >= Walk.nodes.length) return;
+      if (Walk.isAnimating) return;
+      Walk.isAnimating = true;
+
+      const nextEl = Walk.sceneNext;
+      const curEl  = Walk.sceneCurrent;
+      buildScene(nextEl, Walk.nodes[nextIdx]);
+
+      // Initial states
+      nextEl.classList.remove('current');
+      nextEl.classList.remove('leaving');
+      nextEl.classList.remove('entering');
+      // force reflow
+      void nextEl.offsetWidth;
+
+      // Direction-aware: forward → next comes from far (-600z), current pushes past viewer (+900z)
+      if (dir === 1) {
+        nextEl.style.transform = 'translateZ(-600px)';
+        nextEl.style.opacity = '0';
+        curEl.style.transition  = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
+        nextEl.style.transition = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
+        requestAnimationFrame(() => {
+          curEl.style.transform = 'translateZ(900px)';
+          curEl.style.opacity = '0';
+          nextEl.style.transform = 'translateZ(0)';
+          nextEl.style.opacity = '1';
+        });
+      } else {
+        nextEl.style.transform = 'translateZ(500px)';
+        nextEl.style.opacity = '0';
+        curEl.style.transition  = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
+        nextEl.style.transition = 'transform 800ms cubic-bezier(.45,.05,.35,1), opacity 800ms ease';
+        requestAnimationFrame(() => {
+          curEl.style.transform = 'translateZ(-700px)';
+          curEl.style.opacity = '0';
+          nextEl.style.transform = 'translateZ(0)';
+          nextEl.style.opacity = '1';
+        });
+      }
+
+      setTimeout(() => {
+        // Swap: next becomes current
+        curEl.style.transition = '';
+        nextEl.style.transition = '';
+        curEl.innerHTML = '';
+        curEl.style.transform = '';
+        curEl.style.opacity = '';
+        nextEl.style.transform = '';
+        nextEl.style.opacity = '';
+
+        // Swap the ids/references
+        curEl.classList.remove('current');
+        nextEl.classList.add('current');
+        // Swap references (current <-> next)
+        const tmp = Walk.sceneCurrent;
+        Walk.sceneCurrent = Walk.sceneNext;
+        Walk.sceneNext = tmp;
+
+        Walk.currentIndex = nextIdx;
+        Walk.visited.add(nextIdx);
+
+        // Reset rig camera state
+        Walk.dolly = Walk.targetDolly = 0;
+        Walk.yaw *= 0.2; Walk.targetYaw = 0; Walk.manualYaw = 0;
+        Walk.pitch *= 0.2; Walk.targetPitch = 0;
+
+        Walk.isAnimating = false;
+        updateWalkHUD();
+        updateAIGapButton();
+
+        try {
+          const stats = JSON.parse(localStorage.getItem('walk_views') || '{}');
+          const id = Walk.nodes[nextIdx].id;
+          stats[id] = (stats[id] || 0) + 1;
+          localStorage.setItem('walk_views', JSON.stringify(stats));
+        } catch (e) {}
+      }, 820);
     }
 
     function updateAIGapButton() {
       const btn = document.getElementById('walk-ai-gap');
       if (!btn) return;
       const hasNext = Walk.currentIndex < Walk.nodes.length - 1;
-      // Heuristic: show when few nodes OR always on forward edge
       const gap = hasNext && Walk.nodes.length < 6;
       btn.classList.toggle('visible', gap);
       btn.onclick = () => {
@@ -3046,272 +2945,51 @@
       return Promise.resolve({ status: 'stub' });
     };
 
-    // ── POV inputs ───────────────────────────────────────────────────
-    function attachPOVInputs() {
-      const canvas = POV.canvas;
-      POV._onKeyDown = (e) => {
-        if (!document.getElementById('walking-view').classList.contains('active')) return;
-        const k = e.key.toLowerCase();
-        if (k === 'w' || e.key === 'ArrowUp')    { POV.keys.w = true; e.preventDefault(); }
-        if (k === 's' || e.key === 'ArrowDown')  { POV.keys.s = true; e.preventDefault(); }
-        if (k === 'a')                            { POV.keys.a = true; }
-        if (k === 'd')                            { POV.keys.d = true; }
-        if (e.key === 'ArrowLeft')               { POV.keys.left = true; e.preventDefault(); }
-        if (e.key === 'ArrowRight')              { POV.keys.right = true; e.preventDefault(); }
-        if (e.key === 'Enter' || e.key === ' ')  { e.preventDefault(); povWalkForward(); }
-        if (e.key === 'Backspace')               { e.preventDefault(); povWalkBackward(); }
-        if (e.key === 'Escape')                  { e.preventDefault(); exitWalkingMode(); }
-      };
-      POV._onKeyUp = (e) => {
-        const k = e.key.toLowerCase();
-        if (k === 'w' || e.key === 'ArrowUp')    POV.keys.w = false;
-        if (k === 's' || e.key === 'ArrowDown')  POV.keys.s = false;
-        if (k === 'a')                            POV.keys.a = false;
-        if (k === 'd')                            POV.keys.d = false;
-        if (e.key === 'ArrowLeft')               POV.keys.left = false;
-        if (e.key === 'ArrowRight')              POV.keys.right = false;
-      };
-      window.addEventListener('keydown', POV._onKeyDown);
-      window.addEventListener('keyup', POV._onKeyUp);
-
-      // Mouse look — pointer-lock on click (desktop), drag on touch
-      POV._onCanvasClick = () => {
-        if (!canvas.requestPointerLock) return;
-        if (!document.pointerLockElement) {
-          try { canvas.requestPointerLock(); } catch (e) {}
-        }
-      };
-      canvas.addEventListener('click', POV._onCanvasClick);
-
-      POV._onPointerLockChange = () => {
-        POV.pointerLocked = document.pointerLockElement === canvas;
-        canvas.classList.toggle('locked', POV.pointerLocked);
-      };
-      document.addEventListener('pointerlockchange', POV._onPointerLockChange);
-
-      POV._onMouseMove = (e) => {
-        if (!POV.pointerLocked) return;
-        const sens = 0.0022;
-        POV.targetYaw   -= (e.movementX || 0) * sens;
-        POV.targetPitch -= (e.movementY || 0) * sens;
-      };
-      window.addEventListener('mousemove', POV._onMouseMove);
-
-      // Drag look (touch / no pointer-lock)
-      POV._onPointerDown = (e) => {
-        if (POV.pointerLocked) return;
-        if (e.target.closest('.walk-topbar, .walk-hud, .walk-back-btn, .walk-ai-gap')) return;
-        POV.dragging = true;
-        POV.dragPrev = { x: e.clientX, y: e.clientY };
-        canvas.classList.add('grabbing');
-      };
-      POV._onPointerMove = (e) => {
-        if (!POV.dragging) return;
-        const dx = e.clientX - POV.dragPrev.x;
-        const dy = e.clientY - POV.dragPrev.y;
-        POV.dragPrev = { x: e.clientX, y: e.clientY };
-        const sens = 0.0045;
-        POV.targetYaw   += dx * sens;
-        POV.targetPitch += dy * sens;
-      };
-      POV._onPointerUp = () => {
-        POV.dragging = false;
-        canvas.classList.remove('grabbing');
-      };
-      canvas.addEventListener('pointerdown', POV._onPointerDown);
-      window.addEventListener('pointermove', POV._onPointerMove);
-      window.addEventListener('pointerup', POV._onPointerUp);
-    }
-
-    function detachPOVInputs() {
-      if (POV._onKeyDown)         window.removeEventListener('keydown', POV._onKeyDown);
-      if (POV._onKeyUp)           window.removeEventListener('keyup', POV._onKeyUp);
-      if (POV._onMouseMove)       window.removeEventListener('mousemove', POV._onMouseMove);
-      if (POV._onPointerLockChange) document.removeEventListener('pointerlockchange', POV._onPointerLockChange);
-      if (POV.canvas && POV._onCanvasClick) POV.canvas.removeEventListener('click', POV._onCanvasClick);
-      if (POV.canvas && POV._onPointerDown) POV.canvas.removeEventListener('pointerdown', POV._onPointerDown);
-      if (POV._onPointerMove)     window.removeEventListener('pointermove', POV._onPointerMove);
-      if (POV._onPointerUp)       window.removeEventListener('pointerup', POV._onPointerUp);
-      if (POV._onResize)          window.removeEventListener('resize', POV._onResize);
-      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch(e){} }
-    }
-
-    function teardownPOVEngine() {
-      if (!POV.enabled && !POV.renderer) return;
-      detachPOVInputs();
-      if (POV.rafId) cancelAnimationFrame(POV.rafId);
-      POV.rafId = null;
-      POV.enabled = false;
-      try {
-        if (POV.meshCurrent) { POV.scene.remove(POV.meshCurrent); POV.meshCurrent.geometry.dispose(); POV.meshCurrent.material.dispose(); }
-        if (POV.meshNext)    { POV.scene.remove(POV.meshNext); POV.meshNext.geometry.dispose(); POV.meshNext.material.dispose(); }
-        (POV.textures || []).forEach(t => { if (t && t.dispose) t.dispose(); });
-        if (POV.renderer) { POV.renderer.dispose(); }
-      } catch (e) { /* noop */ }
-      POV.meshCurrent = null; POV.meshNext = null;
-      POV.textures = []; POV.scene = null; POV.camera = null; POV.renderer = null;
-      POV.keys = { w:false, a:false, s:false, d:false, up:false, down:false, left:false, right:false };
-      POV.dolly = 0; POV.targetDolly = 0; POV.yaw = 0; POV.pitch = 0; POV.targetYaw = 0; POV.targetPitch = 0;
-      POV.transitioning = false;
-    }
-
-    // Public walkForward/walkBackward delegate to POV when active
-    function povWalkForward() {
-      if (!POV.enabled) return false;
-      if (POV.transitioning) return true;
-      if (Walk.currentIndex >= Walk.nodes.length - 1) return true;
-      startPOVTransition(1);
-      return true;
-    }
-    function povWalkBackward() {
-      if (!POV.enabled) return false;
-      if (POV.transitioning) return true;
-      if (Walk.currentIndex <= 0) return true;
-      startPOVTransition(-1);
-      return true;
-    }
-
-    function renderWalkNode(layerEl, node, isInitial) {
-      if (!node) return;
-      layerEl.innerHTML = '';
-      let media;
-      if (node.isVideo) {
-        media = document.createElement('video');
-        media.src = node.src;
-        media.muted = true;
-        media.autoplay = true;
-        media.loop = true;
-        media.playsInline = true;
-      } else {
-        media = document.createElement('img');
-        media.src = node.src;
-        media.alt = node.name;
-        media.loading = isInitial ? 'eager' : 'lazy';
-        media.onload = function () {
-          if (media.naturalWidth < 900 || media.naturalHeight < 600) {
-            Walk.lowQuality = true;
-            const wv = document.getElementById('walking-view');
-            if (wv) wv.classList.add('walk-low-quality');
-          }
-        };
-      }
-      layerEl.appendChild(media);
-    }
-
     function updateWalkHUD() {
       const node = Walk.nodes[Walk.currentIndex];
       if (!node) return;
       document.getElementById('walk-name').textContent = node.name;
-      document.getElementById('walk-eyebrow').textContent = `${node.icon}  Espacio ${Walk.currentIndex + 1} de ${Walk.nodes.length}`;
+      const icon = node.icon ? node.icon + '  ' : '';
+      document.getElementById('walk-eyebrow').textContent = `${icon}Espacio ${Walk.currentIndex + 1} de ${Walk.nodes.length}`;
       document.getElementById('walk-progress-fill').style.width = `${((Walk.currentIndex + 1) / Walk.nodes.length) * 100}%`;
 
-      // Back button visibility
       document.getElementById('walk-back').classList.toggle('visible', Walk.currentIndex > 0);
-      // Forward hotspot visibility
-      document.getElementById('walk-hotspot').style.display = (Walk.currentIndex < Walk.nodes.length - 1) ? 'flex' : 'none';
+      const hs = document.getElementById('walk-hotspot');
+      if (hs) hs.style.display = (Walk.currentIndex < Walk.nodes.length - 1) ? 'flex' : 'none';
 
-      // Rebuild minimap
       const mm = document.getElementById('walk-minimap');
-      mm.innerHTML = '';
-      Walk.nodes.forEach((n, i) => {
-        const dot = document.createElement('div');
-        dot.className = 'walk-dot' + (i === Walk.currentIndex ? ' active' : (Walk.visited.has(i) ? ' visited' : ''));
-        dot.title = n.name;
-        dot.onclick = () => walkJumpTo(i);
-        mm.appendChild(dot);
-      });
-    }
-
-    function preloadNeighbors() {
-      const idxs = [Walk.currentIndex - 1, Walk.currentIndex + 1].filter(i => i >= 0 && i < Walk.nodes.length);
-      idxs.forEach(i => {
-        const n = Walk.nodes[i];
-        if (!n || n.isVideo) return;
-        const img = new Image();
-        img.src = n.src;
-      });
+      if (mm) {
+        mm.innerHTML = '';
+        Walk.nodes.forEach((n, i) => {
+          const dot = document.createElement('div');
+          dot.className = 'walk-dot' + (i === Walk.currentIndex ? ' active' : (Walk.visited.has(i) ? ' visited' : ''));
+          dot.title = n.name;
+          dot.onclick = () => walkJumpTo(i);
+          mm.appendChild(dot);
+        });
+      }
     }
 
     function walkForward() {
-      if (povWalkForward()) return;
       if (Walk.isAnimating) return;
-      if (Walk.currentIndex >= Walk.nodes.length - 1) {
-        stopWalkAutoplay();
-        return;
-      }
-      transitionToIndex(Walk.currentIndex + 1, 'forward');
+      if (Walk.currentIndex >= Walk.nodes.length - 1) { stopWalkAutoplay(); return; }
+      doWalkTransition(1);
     }
-
     function walkBackward() {
-      if (povWalkBackward()) return;
       if (Walk.isAnimating || Walk.currentIndex <= 0) return;
-      transitionToIndex(Walk.currentIndex - 1, 'backward');
+      doWalkTransition(-1);
     }
-
     function walkJumpTo(i) {
-      if (POV.enabled) {
-        if (POV.transitioning || i === Walk.currentIndex) return;
-        startPOVTransition(i > Walk.currentIndex ? 1 : -1);
-        // NOTE: current POV transition only advances one step; for jumps > 1 we'd chain.
-        return;
-      }
       if (Walk.isAnimating || i === Walk.currentIndex) return;
-      const dir = i > Walk.currentIndex ? 'forward' : 'backward';
-      transitionToIndex(i, dir);
-    }
-
-    function transitionToIndex(nextIndex, direction) {
-      Walk.isAnimating = true;
-      const activeKey = Walk.activeLayer;
-      const inactiveKey = activeKey === 'a' ? 'b' : 'a';
-      const activeEl = Walk.layers[activeKey];
-      const inactiveEl = Walk.layers[inactiveKey];
-
-      // Render next node into inactive layer
-      renderWalkNode(inactiveEl, Walk.nodes[nextIndex], false);
-
-      // Reset pan transforms
-      activeEl.style.transform = '';
-      inactiveEl.style.transform = '';
-      Walk.currentPan = { x: 0, y: 0 };
-      Walk.targetPan = { x: 0, y: 0 };
-
-      // Animation classes
-      activeEl.className = 'walk-layer current ' + (Walk.lowQuality ? 'quick-out' : (direction === 'forward' ? 'anim-out' : 'anim-back-out'));
-      inactiveEl.className = 'walk-layer next ' + (Walk.lowQuality ? 'quick-in' : (direction === 'forward' ? 'anim-in' : 'anim-back-in'));
-      inactiveEl.style.opacity = '1';
-
-      const duration = Walk.lowQuality ? 230 : 660;
-      setTimeout(() => {
-        // Swap layers
-        activeEl.className = 'walk-layer next';
-        activeEl.style.opacity = '0';
-        activeEl.innerHTML = '';
-        inactiveEl.className = 'walk-layer current idle';
-
-        Walk.activeLayer = inactiveKey;
-        Walk.currentIndex = nextIndex;
-        Walk.visited.add(nextIndex);
-        Walk.isAnimating = false;
-
-        updateWalkHUD();
-        preloadNeighbors();
-
-        // Track interaction analytics (local)
-        try {
-          const stats = JSON.parse(localStorage.getItem('walk_views') || '{}');
-          stats[Walk.nodes[nextIndex].id] = (stats[Walk.nodes[nextIndex].id] || 0) + 1;
-          localStorage.setItem('walk_views', JSON.stringify(stats));
-        } catch (e) {}
-      }, duration);
+      if (i < 0 || i >= Walk.nodes.length) return;
+      doWalkTransition(i > Walk.currentIndex ? 1 : -1);
     }
 
     function toggleWalkAutoplay() {
       Walk.autoplay = !Walk.autoplay;
       const btn = document.getElementById('walk-autoplay');
       if (Walk.autoplay) {
-        btn.style.background = 'rgba(255,138,60,0.3)';
-        btn.style.borderColor = 'rgba(255,180,100,0.65)';
+        if (btn) { btn.style.background = 'rgba(232,195,122,0.22)'; btn.style.borderColor = 'rgba(232,195,122,0.65)'; }
         scheduleAutoplayStep();
       } else {
         stopWalkAutoplay();
@@ -3322,10 +3000,7 @@
       if (Walk.autoplayTimer) clearTimeout(Walk.autoplayTimer);
       Walk.autoplayTimer = null;
       const btn = document.getElementById('walk-autoplay');
-      if (btn) {
-        btn.style.background = '';
-        btn.style.borderColor = '';
-      }
+      if (btn) { btn.style.background = ''; btn.style.borderColor = ''; }
     }
     function scheduleAutoplayStep() {
       if (!Walk.autoplay) return;
@@ -3339,70 +3014,71 @@
       }, 3200);
     }
 
-    // ── Drag to look (fake parallax pan) + click to advance ─────────
+    // ── Inputs: mouse-look + keyboard + touch ───────────────────────
     function attachWalkInputs() {
       const stage = document.getElementById('walk-stage');
-      stage.addEventListener('pointerdown', onWalkDown);
-      window.addEventListener('pointermove', onWalkMove);
-      window.addEventListener('pointerup', onWalkUp);
-      window.addEventListener('keydown', onWalkKey);
-      startPanLoop();
+      Walk._onMouseMove = (e) => {
+        if (Walk.reducedMotion) return;
+        const vw = window.innerWidth || 1;
+        const vh = window.innerHeight || 1;
+        const nx = (e.clientX / vw - 0.5) * 2;  // -1..1
+        const ny = (e.clientY / vh - 0.5) * 2;
+        Walk.targetYaw   =  nx * 12;   // deg
+        Walk.targetPitch = -ny * 6;    // deg
+      };
+      Walk._onTouchMove = (e) => {
+        if (!e.touches || !e.touches[0]) return;
+        const vw = window.innerWidth || 1;
+        const vh = window.innerHeight || 1;
+        const nx = (e.touches[0].clientX / vw - 0.5) * 2;
+        const ny = (e.touches[0].clientY / vh - 0.5) * 2;
+        Walk.targetYaw   =  nx * 12;
+        Walk.targetPitch = -ny * 6;
+      };
+      Walk._onKeyDown = (e) => {
+        if (!document.getElementById('walking-view').classList.contains('active')) return;
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp')    { Walk.keys.w = true; e.preventDefault(); }
+        else if (k === 's' || e.key === 'ArrowDown') { Walk.keys.s = true; e.preventDefault(); }
+        else if (k === 'a') { Walk.keys.a = true; }
+        else if (k === 'd') { Walk.keys.d = true; }
+        else if (e.key === 'ArrowLeft')  { Walk.keys.left = true; e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { Walk.keys.right = true; e.preventDefault(); }
+        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); walkForward(); }
+        else if (e.key === 'Backspace') { e.preventDefault(); walkBackward(); }
+        else if (e.key === 'Escape')    { e.preventDefault(); exitWalkingMode(); }
+        hideHintOnInput();
+      };
+      Walk._onKeyUp = (e) => {
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp')    Walk.keys.w = false;
+        else if (k === 's' || e.key === 'ArrowDown') Walk.keys.s = false;
+        else if (k === 'a') Walk.keys.a = false;
+        else if (k === 'd') Walk.keys.d = false;
+        else if (e.key === 'ArrowLeft')  Walk.keys.left = false;
+        else if (e.key === 'ArrowRight') Walk.keys.right = false;
+      };
+      stage.addEventListener('mousemove', Walk._onMouseMove);
+      stage.addEventListener('touchmove', Walk._onTouchMove, { passive: true });
+      window.addEventListener('keydown', Walk._onKeyDown);
+      window.addEventListener('keyup', Walk._onKeyUp);
     }
     function detachWalkInputs() {
       const stage = document.getElementById('walk-stage');
-      stage.removeEventListener('pointerdown', onWalkDown);
-      window.removeEventListener('pointermove', onWalkMove);
-      window.removeEventListener('pointerup', onWalkUp);
-      window.removeEventListener('keydown', onWalkKey);
+      if (stage && Walk._onMouseMove) stage.removeEventListener('mousemove', Walk._onMouseMove);
+      if (stage && Walk._onTouchMove) stage.removeEventListener('touchmove', Walk._onTouchMove);
+      if (Walk._onKeyDown) window.removeEventListener('keydown', Walk._onKeyDown);
+      if (Walk._onKeyUp)   window.removeEventListener('keyup', Walk._onKeyUp);
+      Walk.keys = { w:false, s:false, a:false, d:false, up:false, down:false, left:false, right:false };
     }
-    function onWalkDown(e) {
-      // Ignore clicks on UI controls
-      if (e.target.closest('.walk-topbar, .walk-hud, .walk-hotspot, .walk-back-btn')) return;
-      Walk.dragging = true;
-      Walk.dragStart = { x: e.clientX, y: e.clientY };
-      Walk.dragMoved = false;
-      Walk._dragStartPan = { ...Walk.targetPan };
-    }
-    function onWalkMove(e) {
-      if (!Walk.dragging) return;
-      const dx = e.clientX - Walk.dragStart.x;
-      const dy = e.clientY - Walk.dragStart.y;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) Walk.dragMoved = true;
-      Walk.targetPan.x = Math.max(-60, Math.min(60, Walk._dragStartPan.x + dx * 0.35));
-      Walk.targetPan.y = Math.max(-30, Math.min(30, Walk._dragStartPan.y + dy * 0.25));
-    }
-    function onWalkUp(e) {
-      if (!Walk.dragging) return;
-      const wasDragging = Walk.dragMoved;
-      Walk.dragging = false;
-      // If it was a click (not drag) on stage → advance
-      if (!wasDragging && e.target.closest('#walk-stage') && !e.target.closest('.walk-topbar, .walk-hud, .walk-back-btn')) {
-        walkForward();
+    function hideHintOnInput() {
+      const h = document.getElementById('walk-pov-hint');
+      if (h && h.classList.contains('visible')) {
+        h.classList.remove('visible');
+        clearTimeout(Walk.hintTimer);
       }
-      // Ease pan back to center after release
-      Walk.targetPan = { x: 0, y: 0 };
     }
-    function onWalkKey(e) {
-      if (!document.getElementById('walking-view').classList.contains('active')) return;
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); walkForward(); }
-      else if (e.key === 'ArrowLeft' || e.key === 'Backspace')          { e.preventDefault(); walkBackward(); }
-      else if (e.key === 'Escape')                                       { e.preventDefault(); exitWalkingMode(); }
-    }
-    function startPanLoop() {
-      function loop() {
-        Walk.currentPan.x += (Walk.targetPan.x - Walk.currentPan.x) * 0.12;
-        Walk.currentPan.y += (Walk.targetPan.y - Walk.currentPan.y) * 0.12;
-        const el = Walk.layers[Walk.activeLayer];
-        if (el && !Walk.isAnimating) {
-          const media = el.querySelector('img, video');
-          if (media) {
-            media.style.transform = `translate(${Walk.currentPan.x}px, ${Walk.currentPan.y}px) scale(1.05)`;
-          }
-        }
-        Walk.rafId = requestAnimationFrame(loop);
-      }
-      loop();
-    }
+
 
     // ══════════════════════════════════════════════════════════════
     //  PARALLAX SCENE — mouse tilt + scroll push-in
@@ -3743,87 +3419,47 @@
     touch-action: none;
   }
   #walking-view.active { display: block; }
+  /* === CSS 3D walking stage === */
   .walk-stage {
     position: absolute; inset: 0;
     perspective: 1400px;
-    perspective-origin: 50% 50%;
+    perspective-origin: 50% 45%;
+    overflow: hidden;
+    background: #000;
+    cursor: crosshair;
   }
-  .walk-layer {
+  .walk-rig {
     position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  .walk-scene {
+    position: absolute; inset: 0;
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .walk-scene.current { opacity: 1; z-index: 2; }
+  .walk-depth {
+    position: absolute; inset: -10% -10%;
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: cover;
     backface-visibility: hidden;
-    will-change: transform, filter, opacity;
+    will-change: transform;
   }
-  .walk-layer img, .walk-layer video {
-    width: 115%; height: 115%;
-    object-fit: cover;
-    filter: contrast(1.08) saturate(1.12) brightness(1.02) drop-shadow(0 6px 18px rgba(0,0,0,0.22));
-    transform-origin: 50% 50%;
-    will-change: transform, filter;
-    transition: transform 0.12s ease-out;
+  .walk-depth-far {
+    transform: translateZ(-400px) scale(1.55);
+    filter: brightness(0.92) blur(1.2px);
   }
-  .walk-layer.current { z-index: 2; }
-  .walk-layer.next    { z-index: 1; opacity: 0; }
-
-  /* Forward transition: zoom + blur + fade */
-  .walk-layer.anim-out img, .walk-layer.anim-out video {
-    animation: walk-forward-out 650ms cubic-bezier(.45,.05,.35,1) forwards;
+  .walk-depth-mid {
+    transform: translateZ(-150px) scale(1.22);
   }
-  .walk-layer.anim-in img, .walk-layer.anim-in video {
-    animation: walk-forward-in 650ms cubic-bezier(.45,.05,.35,1) forwards;
-  }
-  @keyframes walk-forward-out {
-    0%   { transform: scale(1);    filter: blur(0) contrast(1.08) saturate(1.12) brightness(1.02); }
-    100% { transform: scale(1.35); filter: blur(10px) contrast(1.08) saturate(1.12) brightness(1.02); }
-  }
-  @keyframes walk-forward-in {
-    0%   { transform: scale(0.82); filter: blur(14px) contrast(1.08) saturate(1.12) brightness(0.8); opacity: 0; }
-    60%  { opacity: 1; }
-    100% { transform: scale(1);    filter: blur(0)    contrast(1.08) saturate(1.12) brightness(1.02); opacity: 1; }
-  }
-  /* Backward transition (reversed) */
-  .walk-layer.anim-back-out img, .walk-layer.anim-back-out video {
-    animation: walk-back-out 600ms cubic-bezier(.45,.05,.35,1) forwards;
-  }
-  .walk-layer.anim-back-in img, .walk-layer.anim-back-in video {
-    animation: walk-back-in 600ms cubic-bezier(.45,.05,.35,1) forwards;
-  }
-  @keyframes walk-back-out {
-    0%   { transform: scale(1);    filter: blur(0) contrast(1.08) saturate(1.12) brightness(1.02); opacity: 1; }
-    100% { transform: scale(0.78); filter: blur(10px) contrast(1.08) saturate(1.12) brightness(0.85); opacity: 0; }
-  }
-  @keyframes walk-back-in {
-    0%   { transform: scale(1.3);  filter: blur(12px); opacity: 0; }
-    100% { transform: scale(1);    filter: blur(0);    opacity: 1; }
-  }
-  /* Low-quality fallback: fast cut */
-  .walk-layer.quick-out img, .walk-layer.quick-out video { animation: walk-quick-out 220ms ease-out forwards; }
-  .walk-layer.quick-in img, .walk-layer.quick-in video  { animation: walk-quick-in 220ms ease-out forwards; }
-  @keyframes walk-quick-out { to { opacity: 0; transform: scale(1.05); } }
-  @keyframes walk-quick-in  { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
-
-  /* Low-quality content: override blur transitions with a clean, quick cut */
-  #walking-view.walk-low-quality .walk-layer.anim-out img,
-  #walking-view.walk-low-quality .walk-layer.anim-out video,
-  #walking-view.walk-low-quality .walk-layer.anim-back-out img,
-  #walking-view.walk-low-quality .walk-layer.anim-back-out video {
-    animation: walk-quick-out 260ms ease both !important;
-  }
-  #walking-view.walk-low-quality .walk-layer.anim-in img,
-  #walking-view.walk-low-quality .walk-layer.anim-in video,
-  #walking-view.walk-low-quality .walk-layer.anim-back-in img,
-  #walking-view.walk-low-quality .walk-layer.anim-back-in video {
-    animation: walk-quick-in 260ms ease both !important;
-  }
-  #walking-view.walk-low-quality .walk-hint { display: none; }
-
-  /* Idle ken-burns pulse */
-  .walk-layer.current.idle img, .walk-layer.current.idle video {
-    animation: walk-idle 12s ease-in-out infinite alternate;
-  }
-  @keyframes walk-idle {
-    0%   { transform: scale(1)    translate(0,0); }
-    100% { transform: scale(1.05) translate(-1%, -0.5%); }
+  .walk-depth-near {
+    transform: translateZ(60px) scale(1.06);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 28%, transparent 46%);
+            mask-image: linear-gradient(to top, #000 0%, #000 28%, transparent 46%);
   }
 
   /* Forward hotspot (pulsing ring) */
@@ -3896,7 +3532,7 @@
     height: 3px; background: rgba(255,255,255,0.15); border-radius: 2px; overflow: hidden;
   }
   .walk-progress-fill {
-    height: 100%; background: linear-gradient(90deg, #ff6a1a, #ffb060);
+    height: 100%; background: linear-gradient(90deg, var(--gold-dim, #b88d45), var(--gold, #E8C37A));
     width: 0%; transition: width 0.5s cubic-bezier(.4,.0,.2,1);
   }
   .walk-minimap {
@@ -3909,7 +3545,7 @@
     border: 1px solid rgba(255,255,255,0.15);
   }
   .walk-dot:hover { background: rgba(255,180,100,0.7); transform: scale(1.3); }
-  .walk-dot.active { background: linear-gradient(135deg, #ff8a3c, #ff6a1a); width: 24px; border-radius: 5px; }
+  .walk-dot.active { background: linear-gradient(135deg, var(--gold, #E8C37A), var(--gold-dim, #b88d45)); width: 24px; border-radius: 5px; }
   .walk-dot.visited { background: rgba(255,180,100,0.45); }
 
   .walk-back-btn {
@@ -3924,38 +3560,26 @@
   .walk-back-btn:hover { background: rgba(255,138,60,0.22); transform: translateX(-2px); }
   .walk-back-btn svg { width: 20px; height: 20px; }
 
-  /* Hint overlay (first-run) */
-  .walk-hint {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    padding: 14px 22px; border-radius: 12px;
-    background: rgba(10,6,4,0.72); backdrop-filter: blur(14px);
-    border: 1px solid rgba(255,180,100,0.35); color: #fff;
-    font-size: 13px; text-align: center; z-index: 40;
-    pointer-events: none;
-    animation: walk-hint-fade 4s ease-in-out forwards;
-  }
-  @keyframes walk-hint-fade {
-    0%   { opacity: 0; transform: translate(-50%, -40%); }
-    20%  { opacity: 1; transform: translate(-50%, -50%); }
-    80%  { opacity: 1; }
-    100% { opacity: 0; }
-  }
+  /* Hint overlay (first-run) — unused, kept minimal for compatibility */
+  .walk-hint { display: none; }
 
-  /* === POV engine overlay === */
-  #walk-canvas {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%;
-    display: block;
-    z-index: 3;
-    cursor: grab;
-    opacity: 0;
-    transition: opacity 420ms ease;
+  /* Mobile nav arrows */
+  .walk-nav-btn {
+    position: absolute; bottom: 120px; z-index: 36;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(20,17,15,0.72); backdrop-filter: blur(14px);
+    border: 1px solid rgba(232,195,122,0.32); color: var(--gold-light);
+    cursor: pointer; display: none; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.2s, border-color 0.2s;
   }
-  #walking-view.pov-ready #walk-canvas { opacity: 1; }
-  #walking-view.pov-ready .walk-layer { opacity: 0 !important; animation: none !important; }
-  #walking-view.pov-ready .walk-hotspot { display: none !important; }
-  #walk-canvas.grabbing { cursor: grabbing; }
-  #walk-canvas.locked { cursor: none; }
+  .walk-nav-btn:hover { background: rgba(232,195,122,0.16); }
+  .walk-nav-btn.left  { left: 22px; }
+  .walk-nav-btn.right { right: 22px; }
+  .walk-nav-btn svg   { width: 22px; height: 22px; }
+  @media (hover: none) and (pointer: coarse) {
+    .walk-nav-btn { display: flex; }
+  }
 
   #walk-loader {
     position: absolute; inset: 0; z-index: 60;
@@ -4042,9 +3666,10 @@
 
 <div id="walking-view">
   <div class="walk-stage" id="walk-stage">
-    <div class="walk-layer current" id="walk-layer-a"></div>
-    <div class="walk-layer next" id="walk-layer-b"></div>
-    <canvas id="walk-canvas"></canvas>
+    <div class="walk-rig" id="walk-rig">
+      <div class="walk-scene current" id="walk-scene-current"></div>
+      <div class="walk-scene" id="walk-scene-next"></div>
+    </div>
 
     <!-- Forward hotspot -->
     <div class="walk-hotspot" id="walk-hotspot" onclick="walkForward()">
@@ -4085,14 +3710,24 @@
     <div class="walk-progress"><div class="walk-progress-fill" id="walk-progress-fill"></div></div>
   </div>
 
-  <!-- First-run hint -->
-  <div class="walk-hint" id="walk-hint">Click para avanzar · arrastra para mirar alrededor</div>
+  <!-- Mobile nav arrows -->
+  <button class="walk-nav-btn left" type="button" onclick="walkBackward()" title="Atrás">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M15 6l-6 6 6 6"/>
+    </svg>
+  </button>
+  <button class="walk-nav-btn right" type="button" onclick="walkForward()" title="Siguiente">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M9 6l6 6-6 6"/>
+    </svg>
+  </button>
 
   <!-- POV controls hint -->
   <div class="walk-pov-hint" id="walk-pov-hint">
-    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverte</span>
-    <span><kbd>Mouse</kbd> mirar</span>
-    <span><kbd>Enter</kbd> siguiente espacio</span>
+    <span>Mueve el mouse para mirar</span>
+    <span><kbd>W</kbd> avanza</span>
+    <span><kbd>S</kbd> retrocede</span>
+    <span><kbd>A</kbd><kbd>D</kbd> giran</span>
     <span><kbd>Esc</kbd> salir</span>
   </div>
 
