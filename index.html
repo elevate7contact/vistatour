@@ -2863,7 +2863,7 @@
     };
 
     function buildWalkNodes() {
-      if (!window.rooms || !rooms.length) return [];
+      if (typeof rooms === 'undefined' || !rooms || !rooms.length) return [];
       return rooms.map((room, i) => ({
         id: `node-${i}`,
         index: i,
@@ -2876,7 +2876,7 @@
     }
 
     function enterWalkingMode() {
-      if (!window.rooms || rooms.length === 0) {
+      if (typeof rooms === 'undefined' || !rooms || rooms.length === 0) {
         alert('Sube al menos una foto para activar el Modo Caminar.');
         return;
       }
