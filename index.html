@@ -2934,6 +2934,13 @@
         media.src = node.src;
         media.alt = node.name;
         media.loading = isInitial ? 'eager' : 'lazy';
+        media.onload = function () {
+          if (media.naturalWidth < 900 || media.naturalHeight < 600) {
+            Walk.lowQuality = true;
+            const wv = document.getElementById('walking-view');
+            if (wv) wv.classList.add('walk-low-quality');
+          }
+        };
       }
       layerEl.appendChild(media);
     }
@@ -3471,7 +3478,7 @@
   .walk-layer img, .walk-layer video {
     width: 115%; height: 115%;
     object-fit: cover;
-    filter: contrast(1.08) saturate(1.12) brightness(1.02);
+    filter: contrast(1.08) saturate(1.12) brightness(1.02) drop-shadow(0 6px 18px rgba(0,0,0,0.22));
     transform-origin: 50% 50%;
     will-change: transform, filter;
     transition: transform 0.12s ease-out;
@@ -3515,6 +3522,21 @@
   .walk-layer.quick-in img, .walk-layer.quick-in video  { animation: walk-quick-in 220ms ease-out forwards; }
   @keyframes walk-quick-out { to { opacity: 0; transform: scale(1.05); } }
   @keyframes walk-quick-in  { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+  /* Low-quality content: override blur transitions with a clean, quick cut */
+  #walking-view.walk-low-quality .walk-layer.anim-out img,
+  #walking-view.walk-low-quality .walk-layer.anim-out video,
+  #walking-view.walk-low-quality .walk-layer.anim-back-out img,
+  #walking-view.walk-low-quality .walk-layer.anim-back-out video {
+    animation: walk-quick-out 260ms ease both !important;
+  }
+  #walking-view.walk-low-quality .walk-layer.anim-in img,
+  #walking-view.walk-low-quality .walk-layer.anim-in video,
+  #walking-view.walk-low-quality .walk-layer.anim-back-in img,
+  #walking-view.walk-low-quality .walk-layer.anim-back-in video {
+    animation: walk-quick-in 260ms ease both !important;
+  }
+  #walking-view.walk-low-quality .walk-hint { display: none; }
 
   /* Idle ken-burns pulse */
   .walk-layer.current.idle img, .walk-layer.current.idle video {
