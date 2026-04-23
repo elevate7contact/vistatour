@@ -29,54 +29,63 @@ const Viewer360 = (() => {
   let prevTX = 0, prevTY = 0;
   let pinchDist0 = 0, pinchFov0 = FOV_DEF;
 
-  // ── Generar equirectangular desde foto regular ────────────────
-  // Técnica mirror-tile: espeja la foto para llenar los 360°
-  // sin zonas vacías ni distorsión extrema
+  // ── Generar equirectangular desde foto ───────────────────────
+  // • Si la foto ya es panorámica (ratio ≥ 1.8) → se usa directa
+  // • Si es foto normal → mirror-tile para llenar los 360°
   function makeEquirect(img) {
     const W = 4096, H = 2048;
     const c   = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
 
-    // Fondo oscuro (suelo y techo fuera del foto)
-    ctx.fillStyle = '#0d0d0d';
-    ctx.fillRect(0, 0, W, H);
+    const ratio = img.naturalWidth / img.naturalHeight;
 
-    // Escalar foto para cubrir la altura completa
-    const scale = H / img.naturalHeight;
-    const pw    = img.naturalWidth * scale;   // ancho escalado
-    const ph    = H;
+    if (ratio >= 1.8) {
+      // ── Panorámica equirectangular → escalar y centrar ──────
+      // Mantener aspect ratio: pillarbox negro si no es exactamente 2:1
+      const dw = W, dh = Math.round(W / ratio);
+      const dy = Math.round((H - dh) / 2);
+      ctx.fillStyle = '#0d0d0d';
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(img, 0, dy, dw, dh);
+    } else {
+      // ── Foto regular → mirror-tile ───────────────────────────
+      ctx.fillStyle = '#0d0d0d';
+      ctx.fillRect(0, 0, W, H);
 
-    // Mirror-tile: dibuja la foto (y su espejo) hasta llenar W
-    let x = 0, flip = false;
-    while (x < W) {
-      const drawW = Math.min(pw, W - x);
-      ctx.save();
-      if (flip) {
-        // Espejo horizontal
-        ctx.translate(x + drawW, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, pw, ph);
-      } else {
-        ctx.drawImage(img, x, 0, pw, ph);
+      const scale = H / img.naturalHeight;
+      const pw    = img.naturalWidth * scale;
+      const ph    = H;
+
+      let x = 0, flip = false;
+      while (x < W) {
+        const drawW = Math.min(pw, W - x);
+        ctx.save();
+        if (flip) {
+          ctx.translate(x + drawW, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(img, 0, 0, pw, ph);
+        } else {
+          ctx.drawImage(img, x, 0, pw, ph);
+        }
+        ctx.restore();
+        x   += pw;
+        flip = !flip;
       }
-      ctx.restore();
-      x   += pw;
-      flip = !flip;
+
+      // Vignette top/bottom para suavizar suelo y techo
+      const vTop = ctx.createLinearGradient(0, 0, 0, H * 0.22);
+      vTop.addColorStop(0, 'rgba(0,0,0,0.85)');
+      vTop.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = vTop;
+      ctx.fillRect(0, 0, W, H * 0.22);
+
+      const vBot = ctx.createLinearGradient(0, H * 0.78, 0, H);
+      vBot.addColorStop(0, 'rgba(0,0,0,0)');
+      vBot.addColorStop(1, 'rgba(0,0,0,0.85)');
+      ctx.fillStyle = vBot;
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
     }
-
-    // Vignette top (techo) y bottom (suelo) para suavizar
-    const vTop = ctx.createLinearGradient(0, 0, 0, H * 0.22);
-    vTop.addColorStop(0, 'rgba(0,0,0,0.85)');
-    vTop.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = vTop;
-    ctx.fillRect(0, 0, W, H * 0.22);
-
-    const vBot = ctx.createLinearGradient(0, H * 0.78, 0, H);
-    vBot.addColorStop(0, 'rgba(0,0,0,0)');
-    vBot.addColorStop(1, 'rgba(0,0,0,0.85)');
-    ctx.fillStyle = vBot;
-    ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
     return c;
   }

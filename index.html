@@ -2179,7 +2179,7 @@
       <div class="upload-container">
         <!-- Drop Zone -->
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileInput(event)">
+          <input type="file" id="file-input" multiple accept="image/*,.heic,.heif" onchange="handleFileInput(event)">
           <div class="drop-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -3032,31 +3032,90 @@ function handleFileInput(e) {
 
 const MAX_ROOMS = 50;
 
-function processFiles(files) {
+// ── Detectar si un archivo es HEIC/HEIF ──────────────────────
+function isHeicFile(f) {
+  if (f.type === 'image/heic' || f.type === 'image/heif') return true;
+  const ext = f.name.split('.').pop().toLowerCase();
+  return ext === 'heic' || ext === 'heif';
+}
+
+// ── Convertir HEIC → JPEG blob (lazy-load heic2any) ──────────
+let _heic2anyPromise = null;
+async function ensureHeic2any() {
+  if (window.heic2any) return;
+  if (!_heic2anyPromise) {
+    _heic2anyPromise = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'assets/lib/heic2any.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  await _heic2anyPromise;
+}
+
+async function convertHeicToBlob(file) {
+  await ensureHeic2any();
+  const blob = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  return Array.isArray(blob) ? blob[0] : blob;
+}
+
+async function processFiles(files) {
   const remaining = MAX_ROOMS - rooms.length;
   if (remaining <= 0) { showToast('Máximo ' + MAX_ROOMS + ' fotos alcanzado'); return; }
 
-  const imageFiles = files.filter(f => f.type.startsWith('image/')).slice(0, remaining);
+  // Aceptar imágenes normales + HEIC por extensión (type puede ser vacío en algunos SO)
+  const imageFiles = files.filter(f =>
+    f.type.startsWith('image/') || isHeicFile(f)
+  ).slice(0, remaining);
   if (imageFiles.length === 0) { showToast('No se encontraron imágenes válidas'); return; }
 
-  // createObjectURL apunta directo al archivo sin conversión base64
-  // → 0% pérdida de calidad, 0% recompresión, carga instantánea
-  const newRooms = imageFiles.map((file, index) => {
+  // Separar HEIC del resto
+  const heicFiles    = imageFiles.filter(f => isHeicFile(f));
+  const regularFiles = imageFiles.filter(f => !isHeicFile(f));
+
+  // Convertir HEIC si los hay
+  let convertedPairs = []; // [{file, src}]
+  if (heicFiles.length > 0) {
+    showToast(`Convirtiendo ${heicFiles.length} imagen${heicFiles.length > 1 ? 'es' : ''} HEIC…`, 3000);
+    try {
+      convertedPairs = await Promise.all(heicFiles.map(async f => {
+        const blob = await convertHeicToBlob(f);
+        return { file: f, src: URL.createObjectURL(blob) };
+      }));
+    } catch (e) {
+      showToast('Error al convertir HEIC. Usa JPG o PNG.', 4000);
+      // Continuar solo con archivos regulares
+    }
+  }
+
+  // Crear rooms para archivos regulares
+  const regularRooms = regularFiles.map(file => {
     const type = detectRoomType(file.name);
     const typeInfo = ROOM_TYPES[type];
     return {
-      id: 0,
-      type: type,
+      id: 0, type,
       src: URL.createObjectURL(file),
-      file: file, // referencia al File original para upload a Storage
-      filename: file.name,
-      fileSize: formatBytes(file.size),
+      file, filename: file.name, fileSize: formatBytes(file.size),
       features: getRandomFeatures(type),
-      detected: true,
-      _typeLabel: typeInfo.label,
-      analysis: null, // se llena async al entrar al tour
+      detected: true, _typeLabel: typeInfo.label, analysis: null,
     };
   });
+
+  // Crear rooms para HEIC convertidos
+  const heicRooms = convertedPairs.map(({ file, src }) => {
+    const type = detectRoomType(file.name);
+    const typeInfo = ROOM_TYPES[type];
+    return {
+      id: 0, type,
+      src,                        // blob URL del JPEG convertido
+      file, filename: file.name, fileSize: formatBytes(file.size),
+      features: getRandomFeatures(type),
+      detected: true, _typeLabel: typeInfo.label, analysis: null,
+    };
+  });
+
+  const newRooms = [...regularRooms, ...heicRooms];
 
   rooms = rooms.concat(newRooms);
   rooms.sort((a, b) => {
@@ -3602,11 +3661,11 @@ function copyLink() {
 }
 
 // ─── Toast ────────────────────────────────────────
-function showToast(msg) {
+function showToast(msg, duration = 2800) {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2800);
+  setTimeout(() => toast.classList.remove('show'), duration);
 }
 
 // DEMO MODE (if no files uploaded)
