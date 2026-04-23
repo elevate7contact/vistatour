@@ -2881,7 +2881,9 @@
         return;
       }
       Walk.nodes = buildWalkNodes();
-      Walk.currentIndex = (typeof currentRoomIndex === 'number' ? currentRoomIndex : 0);
+      if (!Walk.nodes.length) { alert('No hay imágenes válidas para el Modo Caminar.'); return; }
+      const startIdx = (typeof currentRoomIndex === 'number' ? currentRoomIndex : 0);
+      Walk.currentIndex = Math.max(0, Math.min(startIdx, Walk.nodes.length - 1));
       Walk.visited = new Set([Walk.currentIndex]);
       Walk.layers.a = document.getElementById('walk-layer-a');
       Walk.layers.b = document.getElementById('walk-layer-b');
@@ -3411,12 +3413,21 @@
       <div class="preview-title">Espacios de la propiedad</div>
       <div class="preview-count" id="preview-count">0 fotos</div>
     </div>
-    <button class="btn-start-tour" id="btn-upload-continue" onclick="uploadAndContinue()">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-        <polygon points="4,2 14,8 4,14"/>
-      </svg>
-      <span id="btn-upload-label">Enviar imágenes y continuar con el formulario</span>
-    </button>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <button class="btn-start-tour" id="btn-walking-preview" onclick="enterWalkingMode()" style="background: linear-gradient(135deg, #ff8a3c, #ff6a1a); color: #fff;">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="8" cy="3" r="1.5"/>
+          <path d="M8 5v4l-2 5M8 9l2 5M6 7l-2 1M10 7l2 1"/>
+        </svg>
+        <span>Ver en Modo Caminar</span>
+      </button>
+      <button class="btn-start-tour" id="btn-upload-continue" onclick="uploadAndContinue()">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polygon points="4,2 14,8 4,14"/>
+        </svg>
+        <span id="btn-upload-label">Enviar y continuar</span>
+      </button>
+    </div>
   </div>
 
   <div class="preview-grid" id="preview-grid"></div>
