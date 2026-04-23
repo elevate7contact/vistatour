@@ -8,6 +8,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -2657,6 +2665,38 @@
       }));
     }
 
+    // ── POV engine state ─────────────────────────────────────────────
+    const POV = {
+      enabled: false,
+      THREE: null,
+      scene: null,
+      camera: null,
+      renderer: null,
+      canvas: null,
+      meshCurrent: null,
+      meshNext: null,
+      textures: [],           // cached THREE.Texture per node
+      rafId: null,
+      // camera look state (yaw/pitch in radians)
+      yaw: 0, pitch: 0,
+      targetYaw: 0, targetPitch: 0,
+      // dolly position (z inside current node, negative = forward-into-image)
+      dolly: 0, targetDolly: 0,
+      // input
+      keys: { w:false, a:false, s:false, d:false, up:false, down:false, left:false, right:false },
+      pointerLocked: false,
+      dragging: false, dragPrev: { x:0, y:0 },
+      // transition
+      transitioning: false,
+      transitionT: 0,
+      transitionDir: 1,
+      pendingIndex: -1,
+      // timings
+      forwardThreshold: -1.3,     // when dolly reaches this, trigger next
+      backwardThreshold: 1.3,
+      lastTime: 0,
+    };
+
     function enterWalkingMode() {
       if (typeof rooms === 'undefined' || !rooms || rooms.length === 0) {
         alert('Sube al menos una foto para activar el Modo Caminar.');
@@ -2675,7 +2715,7 @@
       const view = document.getElementById('walking-view');
       view.classList.add('active');
 
-      // Render starting node
+      // Always render the legacy carrousel first (acts as instant visual + fallback).
       renderWalkNode(Walk.layers.a, Walk.nodes[Walk.currentIndex], true);
       Walk.layers.a.className = 'walk-layer current idle';
       Walk.layers.b.className = 'walk-layer next';
@@ -2683,9 +2723,13 @@
 
       updateWalkHUD();
       preloadNeighbors();
-      attachWalkInputs();
 
-      // reset hint
+      // Boot the POV engine. If WebGL/Three fails, keep the legacy carrousel.
+      bootPOVEngine().catch(err => {
+        console.warn('[Paseo POV] fallback al carrusel:', err);
+        attachWalkInputs(); // legacy inputs
+      });
+
       const hint = document.getElementById('walk-hint');
       if (hint) {
         hint.style.animation = 'none';
@@ -2697,9 +2741,436 @@
     function exitWalkingMode() {
       const view = document.getElementById('walking-view');
       view.classList.remove('active');
+      view.classList.remove('pov-ready');
       stopWalkAutoplay();
       detachWalkInputs();
+      teardownPOVEngine();
       if (Walk.rafId) cancelAnimationFrame(Walk.rafId);
+    }
+
+    // ── POV engine boot ──────────────────────────────────────────────
+    async function bootPOVEngine() {
+      const loader = document.getElementById('walk-loader');
+      const loaderFill = document.getElementById('walk-loader-fill');
+      const loaderCount = document.getElementById('walk-loader-count');
+      loader.classList.add('visible');
+      loaderFill.style.width = '0%';
+      loaderCount.textContent = `0 / ${Walk.nodes.length}`;
+
+      let THREE;
+      try {
+        THREE = await import('three');
+      } catch (e) {
+        loader.classList.remove('visible');
+        throw new Error('Three.js no pudo cargarse');
+      }
+
+      const canvas = document.getElementById('walk-canvas');
+      if (!canvas) { loader.classList.remove('visible'); throw new Error('canvas ausente'); }
+
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      } catch (e) {
+        loader.classList.remove('visible');
+        throw new Error('WebGL no disponible');
+      }
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearColor(0x000000, 0);
+      const w = canvas.clientWidth || window.innerWidth;
+      const h = canvas.clientHeight || window.innerHeight;
+      renderer.setSize(w, h, false);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 200);
+      camera.position.set(0, 0, 2.6);
+
+      POV.THREE = THREE;
+      POV.scene = scene;
+      POV.camera = camera;
+      POV.renderer = renderer;
+      POV.canvas = canvas;
+      POV.textures = new Array(Walk.nodes.length).fill(null);
+      POV.yaw = 0; POV.pitch = 0; POV.targetYaw = 0; POV.targetPitch = 0;
+      POV.dolly = 0; POV.targetDolly = 0;
+
+      // Preload all textures with progress
+      const loadImgAsTexture = (src) => new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const tex = new THREE.Texture(img);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.needsUpdate = true;
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          resolve(tex);
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+
+      for (let i = 0; i < Walk.nodes.length; i++) {
+        const node = Walk.nodes[i];
+        if (!node.isVideo) {
+          const tex = await loadImgAsTexture(node.src);
+          POV.textures[i] = tex;
+        }
+        loaderFill.style.width = `${Math.round(((i + 1) / Walk.nodes.length) * 100)}%`;
+        loaderCount.textContent = `${i + 1} / ${Walk.nodes.length}`;
+      }
+
+      // Build initial mesh
+      POV.meshCurrent = buildDepthMesh(POV.textures[Walk.currentIndex]);
+      scene.add(POV.meshCurrent);
+
+      // Resize handler
+      POV._onResize = () => {
+        const W = canvas.clientWidth || window.innerWidth;
+        const H = canvas.clientHeight || window.innerHeight;
+        renderer.setSize(W, H, false);
+        camera.aspect = W / H;
+        camera.updateProjectionMatrix();
+      };
+      window.addEventListener('resize', POV._onResize);
+
+      // Input wiring
+      attachPOVInputs();
+
+      POV.enabled = true;
+      const view = document.getElementById('walking-view');
+      view.classList.add('pov-ready');
+      loader.classList.remove('visible');
+
+      // Show controls hint for 5s
+      const povHint = document.getElementById('walk-pov-hint');
+      if (povHint) {
+        povHint.classList.add('visible');
+        setTimeout(() => povHint.classList.remove('visible'), 5000);
+      }
+
+      // Render loop
+      POV.lastTime = performance.now();
+      renderLoop();
+
+      // AI-gap button visibility (stub: show when forward exists)
+      updateAIGapButton();
+    }
+
+    function buildDepthMesh(texture) {
+      const THREE = POV.THREE;
+      if (!texture) {
+        // empty placeholder plane
+        const geom = new THREE.PlaneGeometry(3.2, 1.8, 1, 1);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x1B1815 });
+        return new THREE.Mesh(geom, mat);
+      }
+      // Aspect-ratio aware
+      const img = texture.image;
+      const aspect = (img && img.width && img.height) ? (img.width / img.height) : (16/9);
+      const W = 3.4, H = W / aspect;
+      const SEG = 80;
+      const geom = new THREE.PlaneGeometry(W, H, SEG, SEG);
+
+      // Synthetic depth: vignette + vertical floor/ceiling bias.
+      // Center is "deeper" (farther into screen), edges closer to viewer.
+      const pos = geom.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i) / (W * 0.5); // -1..1
+        const y = pos.getY(i) / (H * 0.5); // -1..1
+        // Radial depth (center farther away)
+        const r = Math.min(1, Math.sqrt(x*x + y*y));
+        const radial = (1 - r) * 0.55;       // center pushes back up to 0.55
+        // Vertical bias: floor (y<0) a bit closer, ceiling (y>0) a bit farther
+        const vertical = -y * 0.12;
+        const z = -(radial + vertical);      // negative z = farther from camera
+        pos.setZ(i, z);
+      }
+      geom.computeVertexNormals();
+
+      const mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(0, 0, 0);
+      return mesh;
+    }
+
+    function renderLoop() {
+      if (!POV.enabled) return;
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - POV.lastTime) / 1000);
+      POV.lastTime = now;
+
+      // Keyboard-driven targets
+      const moveSpeed = 1.8;  // units/sec
+      const lookSpeed = 1.3;  // rad/sec for arrow-look
+      const k = POV.keys;
+      if (!POV.transitioning) {
+        if (k.w || k.up)    POV.targetDolly -= moveSpeed * dt;
+        if (k.s || k.down)  POV.targetDolly += moveSpeed * dt;
+        if (k.a)            POV.targetYaw   += lookSpeed * dt;
+        if (k.d)            POV.targetYaw   -= lookSpeed * dt;
+        if (k.left)         POV.targetYaw   += lookSpeed * dt;
+        if (k.right)        POV.targetYaw   -= lookSpeed * dt;
+      }
+
+      // Clamp pitch
+      const PITCH_MAX = Math.PI * 0.32;
+      POV.targetPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, POV.targetPitch));
+      const YAW_MAX = Math.PI * 0.45;
+      POV.targetYaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, POV.targetYaw));
+
+      // Smooth
+      POV.yaw   += (POV.targetYaw   - POV.yaw)   * Math.min(1, dt * 8);
+      POV.pitch += (POV.targetPitch - POV.pitch) * Math.min(1, dt * 8);
+      POV.dolly += (POV.targetDolly - POV.dolly) * Math.min(1, dt * 6);
+
+      // Apply to camera
+      const cam = POV.camera;
+      cam.rotation.order = 'YXZ';
+      cam.rotation.y = POV.yaw;
+      cam.rotation.x = POV.pitch;
+      cam.position.x = Math.sin(POV.yaw) * 0.15;
+      cam.position.y = -POV.pitch * 0.1;
+      cam.position.z = 2.6 + POV.dolly;
+
+      // Trigger transitions when past threshold
+      if (!POV.transitioning) {
+        if (POV.dolly < POV.forwardThreshold && Walk.currentIndex < Walk.nodes.length - 1) {
+          startPOVTransition(1);
+        } else if (POV.dolly > POV.backwardThreshold && Walk.currentIndex > 0) {
+          startPOVTransition(-1);
+        }
+      } else {
+        advancePOVTransition(dt);
+      }
+
+      POV.renderer.render(POV.scene, POV.camera);
+      POV.rafId = requestAnimationFrame(renderLoop);
+    }
+
+    function startPOVTransition(dir) {
+      const nextIdx = Walk.currentIndex + dir;
+      if (nextIdx < 0 || nextIdx >= Walk.nodes.length) return;
+      POV.transitioning = true;
+      POV.transitionT = 0;
+      POV.transitionDir = dir;
+      POV.pendingIndex = nextIdx;
+
+      // Build next mesh placed in depth (far if forward, near if backward)
+      const nextMesh = buildDepthMesh(POV.textures[nextIdx]);
+      nextMesh.position.z = dir === 1 ? -3.5 : 3.5;
+      nextMesh.material.opacity = 0;
+      nextMesh.material.transparent = true;
+      POV.meshNext = nextMesh;
+      POV.scene.add(nextMesh);
+    }
+
+    function advancePOVTransition(dt) {
+      POV.transitionT += dt / 0.8; // 800ms
+      const t = Math.min(1, POV.transitionT);
+      const ease = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; // easeInOutQuad
+      const dir = POV.transitionDir;
+
+      if (POV.meshCurrent) {
+        POV.meshCurrent.material.opacity = 1 - ease;
+        POV.meshCurrent.position.z = ease * (dir === 1 ? 3.0 : -3.0);
+      }
+      if (POV.meshNext) {
+        POV.meshNext.material.opacity = ease;
+        POV.meshNext.position.z = (dir === 1 ? -3.5 : 3.5) * (1 - ease);
+      }
+
+      if (t >= 1) finishPOVTransition();
+    }
+
+    function finishPOVTransition() {
+      if (POV.meshCurrent) {
+        POV.scene.remove(POV.meshCurrent);
+        POV.meshCurrent.geometry.dispose();
+        POV.meshCurrent.material.dispose();
+      }
+      POV.meshCurrent = POV.meshNext;
+      POV.meshNext = null;
+      if (POV.meshCurrent) POV.meshCurrent.material.opacity = 1;
+
+      Walk.currentIndex = POV.pendingIndex;
+      Walk.visited.add(Walk.currentIndex);
+      POV.pendingIndex = -1;
+      POV.transitioning = false;
+      POV.transitionT = 0;
+
+      // Reset camera dolly
+      POV.dolly = 0; POV.targetDolly = 0;
+      POV.yaw *= 0.3; POV.targetYaw = 0;
+      POV.pitch *= 0.3; POV.targetPitch = 0;
+
+      updateWalkHUD();
+      updateAIGapButton();
+
+      try {
+        const stats = JSON.parse(localStorage.getItem('walk_views') || '{}');
+        const id = Walk.nodes[Walk.currentIndex].id;
+        stats[id] = (stats[id] || 0) + 1;
+        localStorage.setItem('walk_views', JSON.stringify(stats));
+      } catch (e) {}
+    }
+
+    function updateAIGapButton() {
+      const btn = document.getElementById('walk-ai-gap');
+      if (!btn) return;
+      const hasNext = Walk.currentIndex < Walk.nodes.length - 1;
+      // Heuristic: show when few nodes OR always on forward edge
+      const gap = hasNext && Walk.nodes.length < 6;
+      btn.classList.toggle('visible', gap);
+      btn.onclick = () => {
+        const from = Walk.nodes[Walk.currentIndex];
+        const to = Walk.nodes[Walk.currentIndex + 1];
+        if (!from || !to) return;
+        if (typeof window.generateTransition === 'function') {
+          window.generateTransition(from.src, to.src, `Transición entre ${from.name} y ${to.name}`);
+        }
+      };
+    }
+
+    function showWalkToast(text, ms = 2600) {
+      const t = document.getElementById('walk-toast');
+      if (!t) return;
+      t.textContent = text;
+      t.classList.add('visible');
+      clearTimeout(showWalkToast._t);
+      showWalkToast._t = setTimeout(() => t.classList.remove('visible'), ms);
+    }
+
+    // Stub hook for IA gap-fill
+    window.generateTransition = function (fromSrc, toSrc, prompt) {
+      showWalkToast('Generando transición con IA — próximamente');
+      console.log('[Paseo] generateTransition()', { fromSrc, toSrc, prompt });
+      return Promise.resolve({ status: 'stub' });
+    };
+
+    // ── POV inputs ───────────────────────────────────────────────────
+    function attachPOVInputs() {
+      const canvas = POV.canvas;
+      POV._onKeyDown = (e) => {
+        if (!document.getElementById('walking-view').classList.contains('active')) return;
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp')    { POV.keys.w = true; e.preventDefault(); }
+        if (k === 's' || e.key === 'ArrowDown')  { POV.keys.s = true; e.preventDefault(); }
+        if (k === 'a')                            { POV.keys.a = true; }
+        if (k === 'd')                            { POV.keys.d = true; }
+        if (e.key === 'ArrowLeft')               { POV.keys.left = true; e.preventDefault(); }
+        if (e.key === 'ArrowRight')              { POV.keys.right = true; e.preventDefault(); }
+        if (e.key === 'Enter' || e.key === ' ')  { e.preventDefault(); povWalkForward(); }
+        if (e.key === 'Backspace')               { e.preventDefault(); povWalkBackward(); }
+        if (e.key === 'Escape')                  { e.preventDefault(); exitWalkingMode(); }
+      };
+      POV._onKeyUp = (e) => {
+        const k = e.key.toLowerCase();
+        if (k === 'w' || e.key === 'ArrowUp')    POV.keys.w = false;
+        if (k === 's' || e.key === 'ArrowDown')  POV.keys.s = false;
+        if (k === 'a')                            POV.keys.a = false;
+        if (k === 'd')                            POV.keys.d = false;
+        if (e.key === 'ArrowLeft')               POV.keys.left = false;
+        if (e.key === 'ArrowRight')              POV.keys.right = false;
+      };
+      window.addEventListener('keydown', POV._onKeyDown);
+      window.addEventListener('keyup', POV._onKeyUp);
+
+      // Mouse look — pointer-lock on click (desktop), drag on touch
+      POV._onCanvasClick = () => {
+        if (!canvas.requestPointerLock) return;
+        if (!document.pointerLockElement) {
+          try { canvas.requestPointerLock(); } catch (e) {}
+        }
+      };
+      canvas.addEventListener('click', POV._onCanvasClick);
+
+      POV._onPointerLockChange = () => {
+        POV.pointerLocked = document.pointerLockElement === canvas;
+        canvas.classList.toggle('locked', POV.pointerLocked);
+      };
+      document.addEventListener('pointerlockchange', POV._onPointerLockChange);
+
+      POV._onMouseMove = (e) => {
+        if (!POV.pointerLocked) return;
+        const sens = 0.0022;
+        POV.targetYaw   -= (e.movementX || 0) * sens;
+        POV.targetPitch -= (e.movementY || 0) * sens;
+      };
+      window.addEventListener('mousemove', POV._onMouseMove);
+
+      // Drag look (touch / no pointer-lock)
+      POV._onPointerDown = (e) => {
+        if (POV.pointerLocked) return;
+        if (e.target.closest('.walk-topbar, .walk-hud, .walk-back-btn, .walk-ai-gap')) return;
+        POV.dragging = true;
+        POV.dragPrev = { x: e.clientX, y: e.clientY };
+        canvas.classList.add('grabbing');
+      };
+      POV._onPointerMove = (e) => {
+        if (!POV.dragging) return;
+        const dx = e.clientX - POV.dragPrev.x;
+        const dy = e.clientY - POV.dragPrev.y;
+        POV.dragPrev = { x: e.clientX, y: e.clientY };
+        const sens = 0.0045;
+        POV.targetYaw   += dx * sens;
+        POV.targetPitch += dy * sens;
+      };
+      POV._onPointerUp = () => {
+        POV.dragging = false;
+        canvas.classList.remove('grabbing');
+      };
+      canvas.addEventListener('pointerdown', POV._onPointerDown);
+      window.addEventListener('pointermove', POV._onPointerMove);
+      window.addEventListener('pointerup', POV._onPointerUp);
+    }
+
+    function detachPOVInputs() {
+      if (POV._onKeyDown)         window.removeEventListener('keydown', POV._onKeyDown);
+      if (POV._onKeyUp)           window.removeEventListener('keyup', POV._onKeyUp);
+      if (POV._onMouseMove)       window.removeEventListener('mousemove', POV._onMouseMove);
+      if (POV._onPointerLockChange) document.removeEventListener('pointerlockchange', POV._onPointerLockChange);
+      if (POV.canvas && POV._onCanvasClick) POV.canvas.removeEventListener('click', POV._onCanvasClick);
+      if (POV.canvas && POV._onPointerDown) POV.canvas.removeEventListener('pointerdown', POV._onPointerDown);
+      if (POV._onPointerMove)     window.removeEventListener('pointermove', POV._onPointerMove);
+      if (POV._onPointerUp)       window.removeEventListener('pointerup', POV._onPointerUp);
+      if (POV._onResize)          window.removeEventListener('resize', POV._onResize);
+      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch(e){} }
+    }
+
+    function teardownPOVEngine() {
+      if (!POV.enabled && !POV.renderer) return;
+      detachPOVInputs();
+      if (POV.rafId) cancelAnimationFrame(POV.rafId);
+      POV.rafId = null;
+      POV.enabled = false;
+      try {
+        if (POV.meshCurrent) { POV.scene.remove(POV.meshCurrent); POV.meshCurrent.geometry.dispose(); POV.meshCurrent.material.dispose(); }
+        if (POV.meshNext)    { POV.scene.remove(POV.meshNext); POV.meshNext.geometry.dispose(); POV.meshNext.material.dispose(); }
+        (POV.textures || []).forEach(t => { if (t && t.dispose) t.dispose(); });
+        if (POV.renderer) { POV.renderer.dispose(); }
+      } catch (e) { /* noop */ }
+      POV.meshCurrent = null; POV.meshNext = null;
+      POV.textures = []; POV.scene = null; POV.camera = null; POV.renderer = null;
+      POV.keys = { w:false, a:false, s:false, d:false, up:false, down:false, left:false, right:false };
+      POV.dolly = 0; POV.targetDolly = 0; POV.yaw = 0; POV.pitch = 0; POV.targetYaw = 0; POV.targetPitch = 0;
+      POV.transitioning = false;
+    }
+
+    // Public walkForward/walkBackward delegate to POV when active
+    function povWalkForward() {
+      if (!POV.enabled) return false;
+      if (POV.transitioning) return true;
+      if (Walk.currentIndex >= Walk.nodes.length - 1) return true;
+      startPOVTransition(1);
+      return true;
+    }
+    function povWalkBackward() {
+      if (!POV.enabled) return false;
+      if (POV.transitioning) return true;
+      if (Walk.currentIndex <= 0) return true;
+      startPOVTransition(-1);
+      return true;
     }
 
     function renderWalkNode(layerEl, node, isInitial) {
@@ -2764,6 +3235,7 @@
     }
 
     function walkForward() {
+      if (povWalkForward()) return;
       if (Walk.isAnimating) return;
       if (Walk.currentIndex >= Walk.nodes.length - 1) {
         stopWalkAutoplay();
@@ -2773,11 +3245,18 @@
     }
 
     function walkBackward() {
+      if (povWalkBackward()) return;
       if (Walk.isAnimating || Walk.currentIndex <= 0) return;
       transitionToIndex(Walk.currentIndex - 1, 'backward');
     }
 
     function walkJumpTo(i) {
+      if (POV.enabled) {
+        if (POV.transitioning || i === Walk.currentIndex) return;
+        startPOVTransition(i > Walk.currentIndex ? 1 : -1);
+        // NOTE: current POV transition only advances one step; for jumps > 1 we'd chain.
+        return;
+      }
       if (Walk.isAnimating || i === Walk.currentIndex) return;
       const dir = i > Walk.currentIndex ? 'forward' : 'backward';
       transitionToIndex(i, dir);
@@ -3464,6 +3943,98 @@
     100% { opacity: 0; }
   }
 
+  /* === POV engine overlay === */
+  #walk-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    z-index: 3;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 420ms ease;
+  }
+  #walking-view.pov-ready #walk-canvas { opacity: 1; }
+  #walking-view.pov-ready .walk-layer { opacity: 0 !important; animation: none !important; }
+  #walking-view.pov-ready .walk-hotspot { display: none !important; }
+  #walk-canvas.grabbing { cursor: grabbing; }
+  #walk-canvas.locked { cursor: none; }
+
+  #walk-loader {
+    position: absolute; inset: 0; z-index: 60;
+    background: radial-gradient(ellipse at center, #1B1815 0%, #0a0807 90%);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text); gap: 18px;
+    font-family: var(--font-ui);
+  }
+  #walk-loader.visible { display: flex; }
+  #walk-loader .loader-title {
+    font-family: var(--font-display); font-size: 28px;
+    color: var(--gold-light); letter-spacing: 0.5px;
+  }
+  #walk-loader .loader-sub {
+    font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  #walk-loader .loader-bar {
+    width: min(380px, 70vw); height: 2px;
+    background: rgba(232,195,122,0.12); overflow: hidden;
+  }
+  #walk-loader .loader-bar-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold-light));
+    transition: width 0.3s ease;
+  }
+  #walk-loader .loader-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+  .walk-pov-hint {
+    position: absolute; left: 50%; bottom: 130px;
+    transform: translateX(-50%);
+    background: rgba(10,6,4,0.72); backdrop-filter: blur(14px);
+    border: 1px solid rgba(232,195,122,0.28);
+    padding: 10px 18px; border-radius: 10px;
+    font-family: var(--font-ui); font-size: 12px; letter-spacing: 0.5px;
+    color: var(--text); z-index: 40;
+    display: flex; gap: 14px; align-items: center;
+    pointer-events: none;
+    opacity: 0; transition: opacity 400ms ease;
+  }
+  .walk-pov-hint.visible { opacity: 1; }
+  .walk-pov-hint kbd {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 6px; border-radius: 4px;
+    border: 1px solid rgba(232,195,122,0.35);
+    color: var(--gold-light); background: rgba(232,195,122,0.08);
+  }
+
+  .walk-ai-gap {
+    position: absolute; right: 22px; bottom: 96px; z-index: 35;
+    background: rgba(10,6,4,0.72); backdrop-filter: blur(14px);
+    border: 1px solid rgba(232,195,122,0.38);
+    color: var(--gold-light);
+    padding: 9px 14px; border-radius: 10px;
+    font-family: var(--font-ui); font-size: 12px; letter-spacing: 0.3px;
+    cursor: pointer; display: none;
+    align-items: center; gap: 8px;
+    transition: all 0.2s;
+  }
+  .walk-ai-gap.visible { display: flex; }
+  .walk-ai-gap:hover { background: rgba(232,195,122,0.14); }
+  .walk-ai-gap svg { width: 14px; height: 14px; }
+
+  .walk-toast {
+    position: absolute; left: 50%; top: 80px;
+    transform: translate(-50%, -16px);
+    background: rgba(10,6,4,0.88); backdrop-filter: blur(18px);
+    border: 1px solid rgba(232,195,122,0.4);
+    color: var(--gold-light);
+    padding: 10px 18px; border-radius: 10px;
+    font-family: var(--font-ui); font-size: 12px; letter-spacing: 0.3px;
+    z-index: 80; opacity: 0; pointer-events: none;
+    transition: opacity 300ms ease, transform 300ms ease;
+  }
+  .walk-toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
   @media (max-width: 700px) {
     .walk-room-label .name { font-size: 16px; }
     .walk-btn span { display: none; }
@@ -3475,6 +4046,7 @@
   <div class="walk-stage" id="walk-stage">
     <div class="walk-layer current" id="walk-layer-a"></div>
     <div class="walk-layer next" id="walk-layer-b"></div>
+    <canvas id="walk-canvas"></canvas>
 
     <!-- Forward hotspot -->
     <div class="walk-hotspot" id="walk-hotspot" onclick="walkForward()">
@@ -3517,6 +4089,33 @@
 
   <!-- First-run hint -->
   <div class="walk-hint" id="walk-hint">Click para avanzar · arrastra para mirar alrededor</div>
+
+  <!-- POV controls hint -->
+  <div class="walk-pov-hint" id="walk-pov-hint">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverte</span>
+    <span><kbd>Mouse</kbd> mirar</span>
+    <span><kbd>Enter</kbd> siguiente espacio</span>
+    <span><kbd>Esc</kbd> salir</span>
+  </div>
+
+  <!-- AI gap-fill button -->
+  <button class="walk-ai-gap" id="walk-ai-gap" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+    <span>Generar transición con IA</span>
+  </button>
+
+  <!-- Loading screen -->
+  <div id="walk-loader">
+    <div class="loader-sub">Paseo</div>
+    <div class="loader-title">Preparando tu paseo</div>
+    <div class="loader-bar"><div class="loader-bar-fill" id="walk-loader-fill"></div></div>
+    <div class="loader-count" id="walk-loader-count">0 / 0</div>
+  </div>
+
+  <!-- Toast -->
+  <div class="walk-toast" id="walk-toast"></div>
 </div>
 
 <div id="tour-view" class="view hidden">
