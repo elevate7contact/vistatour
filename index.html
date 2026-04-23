@@ -3,33 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VistaTour — Recorridos Virtuales Premium</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+  <title>Paseo — The walk, before the visit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0a0a0a;
-      --surface: #141414;
-      --card: #1c1c1c;
-      --card2: #242424;
-      --border: #2a2a2a;
-      --border-light: #3a3a3a;
-      --gold: #ff6a1a;
-      --gold-light: #ff8a4c;
-      --gold-dim: #a84410;
-      --gold-glow: rgba(255,106,26,0.15);
-      --text: #ffffff;
-      --text-muted: #a0a0a0;
-      --text-dim: #5a5a5a;
-      --red: #e05555;
-      --green: #55c092;
-      --blue: #5580c0;
-      --font-display: 'Cormorant Garamond', Georgia, serif;
-      --font-ui: 'DM Sans', system-ui, sans-serif;
+      /* Paseo — tungsten / projector-booth palette */
+      --bg: #14110F;
+      --surface: #1B1815;
+      --card: #23201C;
+      --card2: #2B2723;
+      --border: #2E2923;
+      --border-light: #3E372F;
+      --gold: #E8C37A;
+      --gold-light: #F2D79A;
+      --gold-dim: #B59456;
+      --gold-glow: rgba(232,195,122,0.14);
+      --text: #F2EDE4;
+      --text-muted: #A39A8C;
+      --text-dim: #6B6459;
+      --red: #FF5B2E;
+      --green: #3A4F46;
+      --blue: #8CA3B0;
+      --font-display: 'Instrument Serif', 'Cormorant Garamond', Georgia, serif;
+      --font-ui: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
       --radius: 12px;
-      --radius-sm: 7px;
-      --trans: all 0.35s cubic-bezier(0.4,0,0.2,1);
+      --radius-sm: 6px;
+      --radius-lg: 20px;
+      --trans: all 0.35s cubic-bezier(0.22,1,0.36,1);
+      --ease-cinema: cubic-bezier(0.22,1,0.36,1);
     }
 
     html, body {
@@ -116,61 +123,68 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       PARALLAX SCENE — casa moderna con capas reactivas a mouse+scroll
+       CINEMA HERO — secuencia de interiores reales con Ken Burns + crossfade
     ══════════════════════════════════════════════════════════════ */
-    .parallax-scene {
+    .cinema-hero {
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 0;
       overflow: hidden;
-      opacity: 0.9;
-      mask-image: linear-gradient(180deg, #000 0%, #000 65%, rgba(0,0,0,0.4) 85%, transparent 100%);
-      -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 65%, rgba(0,0,0,0.4) 85%, transparent 100%);
+      mask-image: linear-gradient(180deg, #000 0%, #000 55%, rgba(0,0,0,0.5) 80%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, rgba(0,0,0,0.5) 80%, transparent 100%);
     }
-    .parallax-scene svg {
+    .cinema-shot {
       position: absolute;
-      left: 50%;
-      bottom: 0;
-      width: 130vw;
-      min-width: 1400px;
-      height: auto;
-      transform: translate3d(-50%, 0, 0);
-      will-change: transform;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      will-change: transform, opacity;
+      filter: brightness(0.72) contrast(1.08) saturate(0.88);
+      animation: cinema-cycle 40s infinite cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .parallax-scene .layer-sky      { z-index: 1; bottom: auto; top: 0; height: 100vh; width: 100vw; min-width: 100vw; left: 0; transform: translate3d(0,0,0); }
-    .parallax-scene .layer-mountains{ z-index: 2; }
-    .parallax-scene .layer-trees-far{ z-index: 3; }
-    .parallax-scene .layer-house    { z-index: 4; }
-    .parallax-scene .layer-foreground{z-index: 5; width: 140vw; min-width: 1500px; }
-
-    /* Warm glow pulsing from house windows */
-    @keyframes window-pulse {
-      0%, 100% { opacity: 0.75; }
-      50%      { opacity: 1; }
+    .shot-a {
+      background-image: url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=2400&q=85');
+      animation-delay: 0s;
     }
-    .parallax-scene .window-glow { animation: window-pulse 5s ease-in-out infinite; transform-origin: center; }
-    .parallax-scene .window-glow-2 { animation: window-pulse 7s ease-in-out infinite 1.2s; }
-    .parallax-scene .window-glow-3 { animation: window-pulse 6s ease-in-out infinite 2.4s; }
-
-    /* Floating ambient particles */
-    .parallax-scene .particle {
+    .shot-b {
+      background-image: url('https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=2400&q=85');
+      animation-delay: 10s;
+    }
+    .shot-c {
+      background-image: url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=2400&q=85');
+      animation-delay: 20s;
+    }
+    .shot-d {
+      background-image: url('https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?w=2400&q=85');
+      animation-delay: 30s;
+    }
+    @keyframes cinema-cycle {
+      0%   { opacity: 0; transform: scale(1.00); }
+      5%   { opacity: 1; }
+      25%  { opacity: 1; transform: scale(1.08); }
+      30%  { opacity: 0; transform: scale(1.09); }
+      100% { opacity: 0; transform: scale(1.00); }
+    }
+    .cinema-vignette {
       position: absolute;
-      width: 3px; height: 3px;
-      border-radius: 50%;
-      background: rgba(255,180,100,0.6);
-      box-shadow: 0 0 8px rgba(255,160,80,0.5);
-      animation: float-up linear infinite;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, transparent 30%, rgba(20,17,15,0.55) 75%, rgba(20,17,15,0.9) 100%),
+        linear-gradient(180deg, rgba(20,17,15,0.2) 0%, transparent 30%, transparent 60%, rgba(20,17,15,0.75) 100%);
     }
-    @keyframes float-up {
-      0%   { transform: translate3d(0, 100vh, 0); opacity: 0; }
-      10%  { opacity: 0.8; }
-      90%  { opacity: 0.8; }
-      100% { transform: translate3d(20vw, -10vh, 0); opacity: 0; }
+    .cinema-grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.08;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     }
-
     @media (max-width: 900px) {
-      .parallax-scene { opacity: 0.35; }
+      .cinema-hero { opacity: 0.55; }
     }
 
     /* Subtle grain — adds texture like premium editorial sites */
@@ -2252,245 +2266,13 @@
   <div class="upload-bg"></div>
 
   <!-- Parallax scene: casa moderna de día, reactiva a mouse + scroll -->
-  <div class="parallax-scene" aria-hidden="true">
-
-    <!-- CIELO DE DÍA con sol y nubes -->
-    <svg class="layer-sky" data-depth="0.02" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
-      <defs>
-        <linearGradient id="sky-day" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#89c4f4"/>
-          <stop offset="45%"  stop-color="#c5dff5"/>
-          <stop offset="80%"  stop-color="#ffd8a8"/>
-          <stop offset="100%" stop-color="#ffb773"/>
-        </linearGradient>
-        <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"  stop-color="#fff6c8" stop-opacity="1"/>
-          <stop offset="40%" stop-color="#ffd96a" stop-opacity="0.7"/>
-          <stop offset="100%" stop-color="#ffb060" stop-opacity="0"/>
-        </radialGradient>
-      </defs>
-      <rect width="1920" height="1080" fill="url(#sky-day)"/>
-      <!-- Sol -->
-      <circle cx="1480" cy="280" r="240" fill="url(#sun-glow)"/>
-      <circle cx="1480" cy="280" r="68" fill="#fff4c0"/>
-      <!-- Nubes (blobs blancos) -->
-      <g fill="#ffffff" opacity="0.85">
-        <ellipse cx="260"  cy="200" rx="140" ry="28"/>
-        <ellipse cx="300"  cy="185" rx="90"  ry="22"/>
-        <ellipse cx="780"  cy="150" rx="160" ry="30"/>
-        <ellipse cx="820"  cy="135" rx="100" ry="24"/>
-        <ellipse cx="1180" cy="220" rx="130" ry="26"/>
-        <ellipse cx="540"  cy="340" rx="110" ry="22"/>
-        <ellipse cx="1700" cy="440" rx="140" ry="24" opacity="0.6"/>
-      </g>
-    </svg>
-
-    <!-- MONTAÑAS LEJANAS (azul/gris atmosférico) -->
-    <svg class="layer-mountains" data-depth="0.1" viewBox="0 0 1920 500" preserveAspectRatio="xMidYEnd slice">
-      <defs>
-        <linearGradient id="mountain-day" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#6e8ba8" stop-opacity="0.85"/>
-          <stop offset="100%" stop-color="#a8bed4" stop-opacity="0.7"/>
-        </linearGradient>
-      </defs>
-      <path d="M0,500 L0,340 L180,220 L340,300 L520,180 L720,290 L920,200 L1140,310 L1360,210 L1560,290 L1760,240 L1920,300 L1920,500 Z" fill="url(#mountain-day)"/>
-      <!-- Picos nevados -->
-      <g fill="#ffffff" opacity="0.7">
-        <path d="M500,195 L520,180 L540,210 Z"/>
-        <path d="M900,220 L920,200 L940,230 Z"/>
-        <path d="M1340,230 L1360,210 L1380,240 Z"/>
-      </g>
-    </svg>
-
-    <!-- COLINAS VERDES MEDIAS -->
-    <svg class="layer-trees-far" data-depth="0.22" viewBox="0 0 1920 340" preserveAspectRatio="xMidYEnd slice">
-      <defs>
-        <linearGradient id="hills-mid" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#6ba053"/>
-          <stop offset="100%" stop-color="#4c8540"/>
-        </linearGradient>
-      </defs>
-      <path d="M0,340 L0,210 Q240,150 480,200 Q720,130 960,190 Q1200,140 1440,195 Q1680,150 1920,205 L1920,340 Z" fill="url(#hills-mid)"/>
-      <!-- Árboles redondos en colinas -->
-      <g fill="#3d6b33">
-        <circle cx="180"  cy="210" r="22"/>
-        <circle cx="240"  cy="215" r="18"/>
-        <circle cx="540"  cy="200" r="24"/>
-        <circle cx="600"  cy="205" r="20"/>
-        <circle cx="900"  cy="198" r="22"/>
-        <circle cx="1260" cy="200" r="24"/>
-        <circle cx="1320" cy="208" r="18"/>
-        <circle cx="1620" cy="200" r="22"/>
-        <circle cx="1680" cy="208" r="18"/>
-      </g>
-    </svg>
-
-    <!-- CASA MODERNA DE DÍA (clara, identificable) -->
-    <svg class="layer-house" data-depth="0.5" viewBox="0 0 1920 700" preserveAspectRatio="xMidYEnd slice">
-      <defs>
-        <linearGradient id="wall-main" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#fefbf5"/>
-          <stop offset="100%" stop-color="#e8ddc9"/>
-        </linearGradient>
-        <linearGradient id="wood-wall" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#c89467"/>
-          <stop offset="100%" stop-color="#9c6f45"/>
-        </linearGradient>
-        <linearGradient id="roof-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#463a34"/>
-          <stop offset="100%" stop-color="#2a231f"/>
-        </linearGradient>
-        <linearGradient id="window-sky" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"  stop-color="#bde0f5"/>
-          <stop offset="100%" stop-color="#7cb8dc"/>
-        </linearGradient>
-        <linearGradient id="lawn-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#7bbd58"/>
-          <stop offset="100%" stop-color="#5d9a44"/>
-        </linearGradient>
-        <linearGradient id="pool-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#63c4e0"/>
-          <stop offset="100%" stop-color="#2b8aa6"/>
-        </linearGradient>
-      </defs>
-
-      <!-- CÉSPED -->
-      <rect x="0" y="430" width="1920" height="270" fill="url(#lawn-grad)"/>
-      <!-- Camino de entrada -->
-      <path d="M860,700 L1060,700 L1000,430 L920,430 Z" fill="#d6c6a8"/>
-
-      <!-- CASA PRINCIPAL (moderna, 2 pisos, techo a dos aguas + volumen horizontal) -->
-      <g transform="translate(560, 170)">
-        <!-- Volumen izquierdo (madera horizontal) -->
-        <rect x="0" y="130" width="280" height="310" fill="url(#wood-wall)"/>
-        <!-- Líneas horizontales de madera -->
-        <g stroke="#6b4a2a" stroke-width="1.5" opacity="0.4">
-          <line x1="0" y1="160" x2="280" y2="160"/>
-          <line x1="0" y1="200" x2="280" y2="200"/>
-          <line x1="0" y1="240" x2="280" y2="240"/>
-          <line x1="0" y1="280" x2="280" y2="280"/>
-          <line x1="0" y1="320" x2="280" y2="320"/>
-          <line x1="0" y1="360" x2="280" y2="360"/>
-          <line x1="0" y1="400" x2="280" y2="400"/>
-        </g>
-
-        <!-- Volumen principal (blanco) -->
-        <rect x="260" y="80" width="480" height="360" fill="url(#wall-main)"/>
-
-        <!-- Techo a dos aguas sobre volumen principal -->
-        <polygon points="240,80 500,-20 760,80" fill="url(#roof-grad)"/>
-        <!-- Techo plano sobre madera -->
-        <rect x="-12" y="118" width="292" height="16" fill="#2a231f"/>
-
-        <!-- VENTANAS PANORÁMICAS (reflejando cielo) -->
-        <!-- Ventana grande central piso 2 -->
-        <rect x="360" y="130" width="280" height="120" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
-        <line x1="500" y1="130" x2="500" y2="250" stroke="#2a231f" stroke-width="3"/>
-
-        <!-- Ventanas piso 1 derecha (ventanales piso-techo) -->
-        <rect x="310" y="270" width="170" height="160" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
-        <line x1="395" y1="270" x2="395" y2="430" stroke="#2a231f" stroke-width="3"/>
-        <rect x="510" y="270" width="210" height="160" fill="url(#window-sky)" stroke="#2a231f" stroke-width="4"/>
-        <line x1="615" y1="270" x2="615" y2="430" stroke="#2a231f" stroke-width="3"/>
-
-        <!-- Ventanas en volumen de madera -->
-        <rect x="40"  y="170" width="90" height="60" fill="url(#window-sky)" stroke="#3a2816" stroke-width="3" class="window-glow"/>
-        <rect x="160" y="170" width="90" height="60" fill="url(#window-sky)" stroke="#3a2816" stroke-width="3" class="window-glow-2"/>
-
-        <!-- PUERTA PRINCIPAL -->
-        <rect x="100" y="300" width="80" height="140" fill="#3a2816"/>
-        <rect x="108" y="310" width="64" height="110" fill="#5c3d22"/>
-        <circle cx="162" cy="375" r="3" fill="#d4af6a"/>
-
-        <!-- Escalones de entrada -->
-        <rect x="80"  y="440" width="120" height="6"  fill="#d6c6a8"/>
-        <rect x="70"  y="446" width="140" height="6"  fill="#c4b292"/>
-
-        <!-- Chimenea pequeña -->
-        <rect x="460" y="-10" width="40" height="60" fill="url(#roof-grad)"/>
-      </g>
-
-      <!-- PISCINA al frente-derecha -->
-      <ellipse cx="1380" cy="570" rx="180" ry="32" fill="#1a6b80" opacity="0.6"/>
-      <rect x="1200" y="520" width="360" height="80" rx="8" fill="url(#pool-grad)"/>
-      <g stroke="#ffffff" stroke-width="1.5" opacity="0.45" fill="none">
-        <path d="M1220,540 Q1260,535 1300,540 T1380,540 T1460,540 T1540,540"/>
-        <path d="M1220,560 Q1260,555 1300,560 T1380,560 T1460,560 T1540,560"/>
-        <path d="M1220,580 Q1260,575 1300,580 T1380,580 T1460,580 T1540,580"/>
-      </g>
-
-      <!-- Árboles de jardín cerca de casa -->
-      <g>
-        <!-- Árbol izquierdo -->
-        <rect x="420" y="460" width="14" height="60" fill="#5a3a22"/>
-        <circle cx="427" cy="450" r="44" fill="#5d9a44"/>
-        <circle cx="405" cy="445" r="32" fill="#6ba053"/>
-        <circle cx="450" cy="438" r="36" fill="#6ba053"/>
-        <!-- Árbol derecho junto a casa -->
-        <rect x="1360" y="440" width="16" height="90" fill="#5a3a22"/>
-        <circle cx="1368" cy="430" r="52" fill="#5d9a44"/>
-        <circle cx="1342" cy="420" r="38" fill="#6ba053"/>
-        <circle cx="1395" cy="418" r="40" fill="#6ba053"/>
-        <!-- Arbusto frontal -->
-        <ellipse cx="740" cy="610" rx="60" ry="18" fill="#4c8540"/>
-        <circle cx="720" cy="600" r="22" fill="#5d9a44"/>
-        <circle cx="760" cy="600" r="22" fill="#5d9a44"/>
-      </g>
-
-      <!-- Cerca blanca baja frontal -->
-      <g stroke="#fefbf5" stroke-width="3" fill="#fefbf5" opacity="0.9">
-        <rect x="50"   y="600" width="4" height="30"/>
-        <rect x="110"  y="600" width="4" height="30"/>
-        <rect x="170"  y="600" width="4" height="30"/>
-        <rect x="230"  y="600" width="4" height="30"/>
-        <line x1="40" y1="610" x2="270" y2="610"/>
-        <rect x="1700" y="600" width="4" height="30"/>
-        <rect x="1760" y="600" width="4" height="30"/>
-        <rect x="1820" y="600" width="4" height="30"/>
-        <rect x="1880" y="600" width="4" height="30"/>
-        <line x1="1690" y1="610" x2="1900" y2="610"/>
-      </g>
-    </svg>
-
-    <!-- FOREGROUND: césped + flores cerca de cámara -->
-    <svg class="layer-foreground" data-depth="0.92" viewBox="0 0 1920 220" preserveAspectRatio="xMidYEnd slice">
-      <defs>
-        <linearGradient id="fg-grass" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stop-color="#5d9a44"/>
-          <stop offset="100%" stop-color="#3d6b33"/>
-        </linearGradient>
-      </defs>
-      <path d="M0,220 L0,110 Q80,70 160,95 Q240,60 320,90 Q400,55 480,85 Q560,50 640,80 Q720,45 800,75 Q880,40 960,70 Q1040,35 1120,70 Q1200,35 1280,70 Q1360,40 1440,75 Q1520,45 1600,80 Q1680,50 1760,85 Q1840,55 1920,90 L1920,220 Z" fill="url(#fg-grass)"/>
-      <!-- Brizna de hierba -->
-      <g stroke="#3d6b33" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.85">
-        <path d="M80,140 Q82,115 85,100"/>
-        <path d="M220,135 Q225,110 232,95"/>
-        <path d="M380,140 Q378,115 374,100"/>
-        <path d="M540,138 Q544,112 550,95"/>
-        <path d="M720,140 Q722,115 725,100"/>
-        <path d="M900,138 Q905,112 912,95"/>
-        <path d="M1100,140 Q1098,115 1094,100"/>
-        <path d="M1280,138 Q1284,112 1290,95"/>
-        <path d="M1460,140 Q1462,115 1465,100"/>
-        <path d="M1640,138 Q1644,112 1650,95"/>
-        <path d="M1820,140 Q1818,115 1814,100"/>
-      </g>
-      <!-- Flores pequeñas -->
-      <g>
-        <circle cx="180"  cy="155" r="4" fill="#ffb8c8"/>
-        <circle cx="440"  cy="150" r="4" fill="#ffee6a"/>
-        <circle cx="680"  cy="155" r="4" fill="#ff9fc0"/>
-        <circle cx="980"  cy="150" r="4" fill="#ffee6a"/>
-        <circle cx="1240" cy="155" r="4" fill="#c98cff"/>
-        <circle cx="1540" cy="152" r="4" fill="#ffee6a"/>
-        <circle cx="1780" cy="155" r="4" fill="#ffb8c8"/>
-      </g>
-    </svg>
-
-    <!-- Pájaros pequeños (ambient) -->
-    <div class="particle" style="left: 20%; top: 25%; width: 6px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 32s; animation-delay: 0s;"></div>
-    <div class="particle" style="left: 55%; top: 18%; width: 5px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 38s; animation-delay: 6s;"></div>
-    <div class="particle" style="left: 72%; top: 22%; width: 6px; height: 2px; background: #2a231f; box-shadow: none; border-radius: 0; animation-duration: 35s; animation-delay: 12s;"></div>
+  <div class="cinema-hero" aria-hidden="true">
+    <div class="cinema-shot shot-a"></div>
+    <div class="cinema-shot shot-b"></div>
+    <div class="cinema-shot shot-c"></div>
+    <div class="cinema-shot shot-d"></div>
+    <div class="cinema-vignette"></div>
+    <div class="cinema-grain"></div>
   </div>
 
   <div class="bg-aurora" aria-hidden="true"></div>
@@ -2503,12 +2285,12 @@
         <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4"/>
       </svg>
     </div>
-    <div class="logo-text">Vista<span>Tour</span></div>
+    <div class="logo-text">Paseo</div>
   </div>
 
   <div class="upload-hero">
-    <h1>Tu propiedad,<br>en un <em>recorrido</em><br>memorable</h1>
-    <p>Sube las fotos de cada espacio y crea un tour virtual inmersivo que tus clientes podrán explorar como si estuvieran ahí.</p>
+    <h1>No es un tour.<br><em>Es un paseo.</em></h1>
+    <p>Sube las fotos. Entregamos el paseo que tu comprador va a recordar en el vuelo de regreso.</p>
   </div>
 
   <!-- ═══════════════════════════════════════════════
