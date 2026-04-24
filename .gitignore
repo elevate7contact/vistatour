@@ -1,6 +1,15 @@
 .DS_Store
 node_modules/
 *.log
-.env
+.next/
+out/
+build/
+dist/
+.env*
+!.env.example
+.playwright-cli/
+*.bak
 .wrangler/
 _setup_supabase.py
+.vercel
+next-env.d.ts
