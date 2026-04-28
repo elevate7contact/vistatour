@@ -89,7 +89,7 @@ export default function TourViewer({ nombre, scenes }: Props) {
   const [walkUrl, setWalkUrl] = useState<string | null>(null);
   const [walkLoading, setWalkLoading] = useState(false);
   const [walkProgress, setWalkProgress] = useState<string>('');
-  const cacheRef = useRef<Map<number, string>>(new Map());
+  const cacheRef = useRef(new Map<number, string>());
 
   async function generateWalkMode() {
     const scene = scenes[i];
