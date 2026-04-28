@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Map, Footprints } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Map as MapIcon, Footprints } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -89,7 +89,7 @@ export default function TourViewer({ nombre, scenes }: Props) {
   const [walkUrl, setWalkUrl] = useState<string | null>(null);
   const [walkLoading, setWalkLoading] = useState(false);
   const [walkProgress, setWalkProgress] = useState<string>('');
-  const cacheRef = useRef<Map<number, string>>(new Map() as Map<number, string>);
+  const cacheRef = useRef(new Map<number, string>());
 
   async function generateWalkMode() {
     const scene = scenes[i];
@@ -245,7 +245,7 @@ export default function TourViewer({ nombre, scenes }: Props) {
           className="bg-black/50 hover:bg-black/70 backdrop-blur rounded-full p-2"
           aria-label="Mapa"
         >
-          <Map size={18} />
+          <MapIcon size={18} />
         </button>
         <button
           onClick={toggleFull}
