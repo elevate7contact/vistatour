@@ -51,10 +51,24 @@ export async function analyzePhotos(imageUrls: string[]): Promise<SceneAnalysis[
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-  const imageBlocks = imageUrls.map((url) => ({
-    type: 'image' as const,
-    source: { type: 'url' as const, url }
-  }));
+  // Fetch images and convert to base64 — more reliable than URL source in SDK 0.30
+  const imageBlocks = await Promise.all(
+    imageUrls.map(async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`No se pudo cargar la imagen: ${url}`);
+      const contentType = (res.headers.get('content-type') ?? 'image/jpeg') as
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/gif'
+        | 'image/webp';
+      const buf = await res.arrayBuffer();
+      const b64 = Buffer.from(buf).toString('base64');
+      return {
+        type: 'image' as const,
+        source: { type: 'base64' as const, media_type: contentType, data: b64 },
+      };
+    })
+  );
 
   const textBlock = {
     type: 'text' as const,
@@ -72,13 +86,12 @@ La última escena (orden === ${imageUrls.length - 1}) tiene direccion_siguiente 
   };
 
   const msg = await client.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2000,
     temperature: 0.3,
     system:
       'Eres un director de tours virtuales inmobiliarios. Ordenas fotos de una propiedad en una secuencia narrativa fluida y analizas cada escena con precisión. Respondes SIEMPRE con JSON válido, sin prosa.',
-    // El SDK v0.30 aún tipa `source` como base64; la API acepta `{type:'url', url}` en runtime.
-    messages: [{ role: 'user', content: [...imageBlocks, textBlock] as unknown as [] }]
+    messages: [{ role: 'user', content: [...imageBlocks, textBlock] }]
   });
 
   const first = msg.content[0];
