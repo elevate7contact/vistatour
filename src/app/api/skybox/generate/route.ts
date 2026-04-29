@@ -1,17 +1,3 @@
-/**
- * /api/skybox/generate
- * ─────────────────────────────────────────────────────────────────────
- * POST  → lanza la generación de un panorama 360° en Blockade Labs Skybox
- *         body: { prompt: string, sceneId?: string, styleId?: number }
- *         resp: { jobId: string }
- *
- * GET   → consulta el estado del job y devuelve la URL cuando esté listo
- *         query: ?id=<jobId>
- *         resp: { status: 'pending' | 'complete' | 'error',
- *                 fileUrl?: string, error?: string }
- *
- * La API key vive en SKYBOX_API_KEY (server-only, no se expone al cliente).
- */
 import { NextRequest, NextResponse } from 'next/server';
 
 const SKYBOX_BASE = 'https://backend.blockadelabs.com/api/v1';
@@ -26,22 +12,31 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const prompt: string = body?.prompt;
-    const styleId: number = body?.styleId ?? 67; // 67 = Realistic
+    const styleId: number = body?.styleId ?? 67;
+    const controlImageUrl: string | undefined = body?.controlImageUrl;
+
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Falta prompt' }, { status: 400 });
     }
 
+    const fd = new FormData();
+    fd.append('prompt', prompt);
+    fd.append('skybox_style_id', String(styleId));
+    fd.append('enhance_prompt', 'true');
+
+    // Adjuntar la foto real del usuario como imagen de referencia
+    if (controlImageUrl) {
+      const imgRes = await fetch(controlImageUrl);
+      if (imgRes.ok) {
+        const blob = await imgRes.blob();
+        fd.append('control_image', blob, 'reference.jpg');
+      }
+    }
+
     const r = await fetch(`${SKYBOX_BASE}/skybox`, {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        skybox_style_id: styleId,
-        enhance_prompt: true,
-      }),
+      headers: { 'x-api-key': apiKey() },
+      body: fd,
     });
 
     if (!r.ok) {
@@ -68,11 +63,9 @@ export async function GET(req: NextRequest) {
       headers: { 'x-api-key': apiKey() },
     });
     if (!r.ok) {
-      return NextResponse.json(
-        { error: 'Skybox GET falló', status: r.status },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: 'Skybox GET falló', status: r.status }, { status: 502 });
     }
+
     const data = await r.json();
     const reqInfo = data.request ?? data;
     const status: string = reqInfo.status ?? 'pending';
@@ -80,14 +73,11 @@ export async function GET(req: NextRequest) {
     if (status === 'complete') {
       return NextResponse.json({
         status: 'complete',
-        fileUrl: reqInfo.file_url ?? reqInfo.thumb_url,
+        fileUrl: reqInfo.file_url || reqInfo.thumb_url,
       });
     }
     if (status === 'error' || status === 'abort') {
-      return NextResponse.json({
-        status: 'error',
-        error: reqInfo.error_message ?? status,
-      });
+      return NextResponse.json({ status: 'error', error: reqInfo.error_message ?? status });
     }
     return NextResponse.json({ status: 'pending', detail: status });
   } catch (e: any) {

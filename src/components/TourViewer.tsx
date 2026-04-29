@@ -85,53 +85,55 @@ export default function TourViewer({ nombre, scenes }: Props) {
   const touchStart = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Modo Caminar (Skybox 360) — cache por escena
-  const [walkUrl, setWalkUrl] = useState<string | null>(null);
+  // Modo Caminar (Skybox 360) — una URL por escena
+  const [walkUrls, setWalkUrls] = useState<Record<number, string>>({});
+  const [walkMode, setWalkMode] = useState(false);
   const [walkLoading, setWalkLoading] = useState(false);
-  const [walkProgress, setWalkProgress] = useState<string>('');
-  const cacheRef = useRef(new Map<number, string>());
+  const [walkProgress, setWalkProgress] = useState('');
 
-  async function generateWalkMode() {
-    const scene = scenes[i];
-    if (!scene) return;
-    const cached = cacheRef.current.get(scene.orden);
-    if (cached) {
-      setWalkUrl(cached);
+  async function pollJob(jobId: string, onTick: (s: string) => void): Promise<string> {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise((res) => setTimeout(res, 3000));
+      onTick(`(${attempt * 3 + 3}s)`);
+      const sr = await fetch(`/api/skybox/generate?id=${jobId}`);
+      const data = await sr.json() as { status: string; fileUrl?: string; error?: string };
+      if (data.status === 'complete' && data.fileUrl) return data.fileUrl;
+      if (data.status === 'error') throw new Error(data.error ?? 'Skybox falló');
+    }
+    throw new Error('Timeout (3min)');
+  }
+
+  async function startWalkMode() {
+    // Si ya están todas generadas, solo activar el modo
+    if (Object.keys(walkUrls).length === scenes.length) {
+      setWalkMode(true);
       return;
     }
+    setWalkLoading(true);
+    const accumulated: Record<number, string> = { ...walkUrls };
     try {
-      setWalkLoading(true);
-      setWalkProgress('Iniciando…');
-      const prompt = buildPrompt(scene.tipo_espacio, scene.paleta_hex);
-      const r = await fetch('/api/skybox/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || `POST falló (${r.status})`);
-      }
-      const { jobId } = await r.json();
-
-      // polling cada 3s, máx 3 minutos
-      let attempt = 0;
-      while (attempt < 60) {
-        attempt++;
-        await new Promise((res) => setTimeout(res, 3000));
-        setWalkProgress(`Generando panorama (${attempt * 3}s)…`);
-        const sr = await fetch(`/api/skybox/generate?id=${jobId}`);
-        const data = await sr.json();
-        if (data.status === 'complete' && data.fileUrl) {
-          cacheRef.current.set(scene.orden, data.fileUrl);
-          setWalkUrl(data.fileUrl);
-          return;
+      for (let idx = 0; idx < scenes.length; idx++) {
+        const scene = scenes[idx];
+        if (accumulated[scene.orden]) continue;
+        setWalkProgress(`Habitación ${idx + 1} de ${scenes.length}`);
+        const prompt = buildPrompt(scene.tipo_espacio, scene.paleta_hex);
+        const r = await fetch('/api/skybox/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, controlImageUrl: scene.image_url }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({} as { error?: string })) as { error?: string };
+          throw new Error(err.error ?? `POST falló (${r.status})`);
         }
-        if (data.status === 'error') {
-          throw new Error(data.error || 'Skybox falló');
-        }
+        const { jobId } = await r.json() as { jobId: string };
+        const fileUrl = await pollJob(jobId, (t) =>
+          setWalkProgress(`Habitación ${idx + 1} de ${scenes.length} ${t}`)
+        );
+        accumulated[scene.orden] = fileUrl;
+        setWalkUrls({ ...accumulated });
       }
-      throw new Error('Timeout (3min)');
+      setWalkMode(true);
     } catch (e: any) {
       console.error('[walk-mode]', e);
       alert('Error generando modo caminar: ' + e.message);
@@ -221,17 +223,21 @@ export default function TourViewer({ nombre, scenes }: Props) {
       {/* top-right: walk mode + fullscreen + map toggle */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <button
-          onClick={generateWalkMode}
+          onClick={walkMode ? () => setWalkMode(false) : startWalkMode}
           disabled={walkLoading}
           className="flex items-center gap-2 px-4 h-9 rounded-full text-white font-semibold text-sm shadow-lg transition disabled:opacity-60 disabled:cursor-wait"
-          style={{ background: 'linear-gradient(135deg, #FF6B35, #FF8555)' }}
+          style={{ background: walkMode ? 'rgba(0,0,0,0.6)' : 'linear-gradient(135deg, #FF6B35, #FF8555)' }}
           aria-label="Ver en Modo Caminar"
-          title="Generar tour caminable con IA"
         >
           {walkLoading ? (
             <>
               <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               <span className="hidden sm:inline">{walkProgress || 'Generando…'}</span>
+            </>
+          ) : walkMode ? (
+            <>
+              <Footprints size={16} />
+              <span className="hidden sm:inline">Salir del recorrido</span>
             </>
           ) : (
             <>
@@ -256,12 +262,12 @@ export default function TourViewer({ nombre, scenes }: Props) {
         </button>
       </div>
 
-      {/* Visor 360° Skybox — overlay */}
-      {walkUrl && (
+      {/* Visor 360° Skybox — overlay, muestra la escena actual */}
+      {walkMode && walkUrls[current.orden] && (
         <Skybox360Viewer
-          panoramaUrl={walkUrl}
-          title={`${nombre} — ${current.tipo_espacio ?? 'Espacio'}`}
-          onClose={() => setWalkUrl(null)}
+          panoramaUrl={walkUrls[current.orden]}
+          title={`${nombre} — ${current.tipo_espacio ?? 'Espacio'} (${i + 1}/${total})`}
+          onClose={() => setWalkMode(false)}
         />
       )}
 
