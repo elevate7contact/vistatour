@@ -6,6 +6,11 @@ export interface SceneAnalysis {
   paleta_hex: string[];
   direccion_siguiente: 'adelante' | 'izquierda' | 'derecha' | 'arriba' | 'abajo' | null;
   similitud_siguiente: 'alta' | 'media' | 'baja' | null;
+  /** Descripción FIEL del espacio basada SOLO en lo que se ve en la foto.
+   *  Mobiliario real, colores reales, materiales reales. Se usa como prompt
+   *  para Skybox para que el panorama 360° sea fiel a la foto del cliente
+   *  (sin inventar muebles ni cambiar el espacio). */
+  descripcion_fiel: string;
 }
 
 const DIRECCIONES = new Set(['adelante', 'izquierda', 'derecha', 'arriba', 'abajo']);
@@ -34,19 +39,24 @@ function parseScenes(raw: string, n: number): SceneAnalysis[] {
     const sim = typeof item.similitud_siguiente === 'string' && SIMILITUDES.has(item.similitud_siguiente)
       ? (item.similitud_siguiente as SceneAnalysis['similitud_siguiente'])
       : null;
+    const desc = typeof item.descripcion_fiel === 'string' && item.descripcion_fiel.trim().length > 0
+      ? item.descripcion_fiel.trim()
+      : `${tipo} interior, real estate photography`;
     return {
       orden,
       tipo_espacio: tipo,
       paleta_hex: paleta.length > 0 ? paleta : ['#1a1a1c', '#d8a15a', '#f4ede1', '#8a8a8a', '#2c2c2e'],
       direccion_siguiente: dir,
-      similitud_siguiente: sim
+      similitud_siguiente: sim,
+      descripcion_fiel: desc,
     };
   });
 }
 
 export async function analyzePhotos(imageUrls: string[]): Promise<SceneAnalysis[]> {
-  if (imageUrls.length < 5 || imageUrls.length > 7) {
-    throw new Error('Se requieren entre 5 y 7 fotos.');
+  // Aceptar de 1 a 7 fotos (1 = vista 360 individual, 5+ = tour navegable)
+  if (imageUrls.length < 1 || imageUrls.length > 7) {
+    throw new Error('Se requieren entre 1 y 7 fotos.');
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -70,27 +80,42 @@ export async function analyzePhotos(imageUrls: string[]): Promise<SceneAnalysis[
     })
   );
 
+  const isSingle = imageUrls.length === 1;
+  const lastIdx = imageUrls.length - 1;
+
   const textBlock = {
     type: 'text' as const,
-    text: `Analiza estas ${imageUrls.length} fotos de una propiedad inmobiliaria. Ordénalas en secuencia natural de recorrido (entrada → sala → cocina → habitaciones → baños → exterior). El campo "orden" debe ser el índice final (0..${imageUrls.length - 1}) en el recorrido. Las fotos están numeradas en el orden en que aparecen (foto 0 es la primera). Cada objeto también debe tener "foto_original" que indica qué índice de entrada corresponde.
+    text: isSingle
+      ? `Analiza esta foto de una propiedad inmobiliaria.
+
+Devuelve SOLO un JSON array con UN objeto, sin explicación, sin markdown, sin texto extra. El objeto con las claves EXACTAS:
+- orden: 0
+- foto_original: 0
+- tipo_espacio: string en español (ej: "sala", "cocina", "habitación principal", "baño", "comedor", "balcón", "entrada", "patio")
+- paleta_hex: array de exactamente 5 strings hex de los colores DOMINANTES REALES en la foto (ej: ["#aabbcc", ...])
+- direccion_siguiente: null
+- similitud_siguiente: null
+- descripcion_fiel: string en INGLÉS describiendo CON PRECISIÓN lo que se ve en la foto. Mobiliario real, colores reales, materiales reales (parquet, mármol, madera, etc), iluminación real (natural/artificial), elementos arquitectónicos reales (ventanas, puertas, columnas). NO INVENTES muebles, plantas, cuadros, ni elementos que no estén en la foto. Máximo 60 palabras. Termina con: ", real estate photography, equirectangular 360 panorama".`
+      : `Analiza estas ${imageUrls.length} fotos de una propiedad inmobiliaria. Ordénalas en secuencia natural de recorrido (entrada → sala → cocina → habitaciones → baños → exterior). El campo "orden" debe ser el índice final (0..${lastIdx}) en el recorrido. Las fotos están numeradas en el orden en que aparecen (foto 0 es la primera). Cada objeto también debe tener "foto_original" que indica qué índice de entrada corresponde.
 
 Devuelve SOLO un JSON array con ${imageUrls.length} objetos, sin explicación, sin markdown, sin texto extra. Cada objeto con las claves EXACTAS:
-- orden: int (posición en el recorrido, 0..${imageUrls.length - 1})
-- foto_original: int (índice en el input original 0..${imageUrls.length - 1})
+- orden: int (posición en el recorrido, 0..${lastIdx})
+- foto_original: int (índice en el input original 0..${lastIdx})
 - tipo_espacio: string en español (ej: "sala", "cocina", "habitación principal", "baño", "comedor", "balcón", "entrada", "patio")
-- paleta_hex: array de exactamente 5 strings hex (ej: ["#aabbcc", ...])
+- paleta_hex: array de exactamente 5 strings hex de los colores DOMINANTES REALES en cada foto (ej: ["#aabbcc", ...])
 - direccion_siguiente: "adelante" | "izquierda" | "derecha" | "arriba" | "abajo" | null — cómo fluye visualmente esta escena hacia la siguiente
 - similitud_siguiente: "alta" | "media" | "baja" | null — qué tan similares son los colores/composición con la siguiente
+- descripcion_fiel: string en INGLÉS describiendo CON PRECISIÓN lo que se ve en cada foto. Mobiliario real, colores reales, materiales reales (parquet, mármol, madera, etc), iluminación real (natural/artificial), elementos arquitectónicos reales (ventanas, puertas, columnas). NO INVENTES muebles, plantas, cuadros, ni elementos que no estén en la foto. Máximo 60 palabras por foto. Termina cada descripción con: ", real estate photography, equirectangular 360 panorama".
 
-La última escena (orden === ${imageUrls.length - 1}) tiene direccion_siguiente y similitud_siguiente en null.`
+La última escena (orden === ${lastIdx}) tiene direccion_siguiente y similitud_siguiente en null.`
   };
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
-    temperature: 0.3,
+    max_tokens: 3000,
+    temperature: 0.2,
     system:
-      'Eres un director de tours virtuales inmobiliarios. Ordenas fotos de una propiedad en una secuencia narrativa fluida y analizas cada escena con precisión. Respondes SIEMPRE con JSON válido, sin prosa.',
+      'Eres un director de tours virtuales inmobiliarios. Describes con precisión absoluta lo que ves en cada foto sin inventar elementos. Respondes SIEMPRE con JSON válido, sin prosa.',
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }]
   });
 

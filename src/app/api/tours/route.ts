@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El paseo necesita un nombre.' }, { status: 400 });
   }
   const rawFiles = formData.getAll('files').filter((v): v is File => v instanceof File);
-  if (rawFiles.length < 5 || rawFiles.length > 7) {
-    return NextResponse.json({ error: 'Sube entre 5 y 7 fotos.' }, { status: 400 });
+  if (rawFiles.length < 1 || rawFiles.length > 7) {
+    return NextResponse.json({ error: 'Sube entre 1 y 7 fotos.' }, { status: 400 });
   }
   for (const f of rawFiles) {
     if (!ALLOWED.includes(f.type)) {
@@ -104,7 +104,11 @@ export async function POST(req: NextRequest) {
         tipo_espacio: s.tipo_espacio,
         paleta_hex: s.paleta_hex,
         direccion_siguiente: s.direccion_siguiente,
-        similitud_siguiente: s.similitud_siguiente
+        similitud_siguiente: s.similitud_siguiente,
+        // Prompt fiel a la foto real — Skybox usará esto para que el panorama
+        // respete los muebles/colores/materiales reales sin inventar nada.
+        skybox_prompt: s.descripcion_fiel,
+        panorama_status: 'pending',
       };
     });
 
@@ -112,6 +116,18 @@ export async function POST(req: NextRequest) {
     if (scErr) throw new Error(`Error guardando escenas: ${scErr.message}`);
 
     await admin.from('tours').update({ status: 'ready' }).eq('id', tourId);
+
+    // 5) Disparar generación de panoramas Skybox en background (fire-and-forget).
+    //    No bloqueamos la respuesta — el cliente vuelve a /tour/{id} y ahí
+    //    ve el progreso. Los panoramas se generan en paralelo (uno por scene).
+    const origin = req.headers.get('origin') || `https://${req.headers.get('host')}`;
+    fetch(`${origin}/api/tours/${tourId}/generate-panoramas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }).catch((e) => {
+      console.error('[tours/POST] auto-trigger panoramas falló:', e);
+    });
+
     return NextResponse.json({ id: tourId }, { status: 201 });
   } catch (e) {
     await admin.from('tours').update({ status: 'failed' }).eq('id', tourId);

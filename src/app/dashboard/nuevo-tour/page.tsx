@@ -20,8 +20,8 @@ export default function NuevoTourPage() {
       setErr('Ponle un nombre al paseo.');
       return;
     }
-    if (files.length < 5 || files.length > 7) {
-      setErr('Selecciona entre 5 y 7 fotos.');
+    if (files.length < 1 || files.length > 7) {
+      setErr('Selecciona entre 1 y 7 fotos.');
       return;
     }
     setLoading(true);
@@ -48,7 +48,7 @@ export default function NuevoTourPage() {
           Nuevo <span className="serif-italic text-paseo-gold">paseo</span>
         </h1>
         <p className="text-paseo-cream/60 mb-8">
-          Subes 5 a 7 fotos y en menos de 2 minutos tienes un recorrido listo para compartir.
+          1 foto = vista 360° individual. 5+ fotos = recorrido navegable. En menos de 2 minutos.
         </p>
 
         <form onSubmit={onSubmit} className="space-y-6">

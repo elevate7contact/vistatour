@@ -110,7 +110,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     const supa = createAdminClient();
     const { data: scenes, error: errSc } = await supa
       .from('scenes')
-      .select('id, image_url, tipo_espacio, paleta_hex, panorama_status, panorama_job_id')
+      .select('id, image_url, tipo_espacio, paleta_hex, panorama_status, panorama_job_id, skybox_prompt')
       .eq('tour_id', params.id)
       .order('orden', { ascending: true });
 
@@ -126,7 +126,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
           return { sceneId: s.id, status: 'skipped', reason: 'already complete' };
         }
         try {
-          const prompt = buildPrompt(s.tipo_espacio, s.paleta_hex);
+          // Si Claude generó descripcion_fiel (guardada en skybox_prompt), usarla
+          // así el panorama 360 es fiel a la foto del cliente. Si no, fallback al prompt genérico.
+          const prompt = s.skybox_prompt && s.skybox_prompt.trim().length > 10
+            ? s.skybox_prompt
+            : buildPrompt(s.tipo_espacio, s.paleta_hex);
           const jobId = await skyboxStartJob(prompt, s.image_url);
           await supa
             .from('scenes')
