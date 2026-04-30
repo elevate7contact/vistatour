@@ -74,6 +74,9 @@ export default async function TourPage({ params }: { params: { id: string } }) {
       id: s.id,
       orden: s.orden,
       panorama_url: s.panorama_url!,
+      // image_url = foto ORIGINAL del cliente. Se renderiza como ancla frontal
+      // dentro del 360° para garantizar fidelidad fotográfica perfecta.
+      image_url: s.image_url,
       tipo_espacio: s.tipo_espacio,
       paleta_hex: s.paleta_hex,
       hotspots: Array.isArray(s.hotspots) ? s.hotspots : [],

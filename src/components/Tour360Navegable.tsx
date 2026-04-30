@@ -21,6 +21,9 @@ export interface Scene360 {
   id: string;
   orden: number;
   panorama_url: string;
+  /** Foto ORIGINAL del cliente. Se proyecta como ancla frontal dentro del 360°
+   *  para garantizar que el realtor vea SU foto exacta, sin alteraciones. */
+  image_url: string;
   tipo_espacio: string | null;
   paleta_hex: string[] | null;
   hotspots: Hotspot[] | null;
@@ -70,6 +73,9 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
   const threeStateRef = useRef<{
     scene?: any; camera?: any; renderer?: any;
     sphere?: any; texture?: any; material?: any;
+    // Foto-ancla: malla con la foto ORIGINAL del cliente, posicionada al frente.
+    // Garantiza fidelidad fotográfica — el cliente ve SU foto, no la versión IA.
+    photoMesh?: any; photoTexture?: any; photoMaterial?: any;
     THREE?: any; raf?: number; disposed?: boolean;
     rotX?: number; rotY?: number;
     targetRotX?: number; targetRotY?: number;
@@ -114,6 +120,25 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
       const sphere = new THREE.Mesh(geometry, material);
       scene.add(sphere);
 
+      // ─── FOTO-ANCLA (Camino B — fidelidad fotográfica) ───────────────────
+      // Plano curvado más cercano a la cámara que la esfera de panorama,
+      // anclado al frente (+X). Renderiza la foto ORIGINAL del cliente.
+      // El realtor ve SU foto exacta cuando mira al frente. Solo al rotar
+      // ~70° lateralmente aparece el panorama IA (relleno).
+      const photoGeo = new THREE.PlaneGeometry(560, 360);
+      const photoMaterial = new THREE.MeshBasicMaterial({
+        color: 0x111111,         // negro hasta que cargue la textura
+        side: THREE.DoubleSide,
+        transparent: false,
+      });
+      const photoMesh = new THREE.Mesh(photoGeo, photoMaterial);
+      photoMesh.position.set(480, 0, 0);   // 480u sobre +X (cámara mira a +X por default)
+      photoMesh.lookAt(0, 0, 0);            // gira el plano para encarar la cámara
+      photoMesh.renderOrder = 2;            // se dibuja después del sphere → siempre encima
+      photoMaterial.depthTest = false;      // no es ocultado por la esfera
+      scene.add(photoMesh);
+      // ───────────────────────────────────────────────────────────────────
+
       const state = threeStateRef.current;
       state.THREE = THREE;
       state.scene = scene;
@@ -121,6 +146,8 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
       state.renderer = renderer;
       state.sphere = sphere;
       state.material = material;
+      state.photoMesh = photoMesh;
+      state.photoMaterial = photoMaterial;
       state.rotX = 0; state.rotY = 0;
       state.targetRotX = 0; state.targetRotY = 0;
       state.isDragging = false;
@@ -196,13 +223,16 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
       }
       if (s.material) s.material.dispose();
       if (s.texture) s.texture.dispose();
+      if (s.photoMaterial) s.photoMaterial.dispose();
+      if (s.photoTexture) s.photoTexture.dispose();
+      if (s.photoMesh && s.photoMesh.geometry) s.photoMesh.geometry.dispose();
       if (s.onPointerMove) window.removeEventListener('pointermove', s.onPointerMove);
       if (s.onPointerUp) window.removeEventListener('pointerup', s.onPointerUp);
       if (s.onResize) window.removeEventListener('resize', s.onResize);
     };
   }, []);
 
-  // Cambiar textura cuando cambia escena
+  // Cambiar textura cuando cambia escena (panorama IA + foto original)
   useEffect(() => {
     const s = threeStateRef.current;
     if (!s.THREE || !s.material || !current?.panorama_url) return;
@@ -211,19 +241,47 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
     loader.setCrossOrigin('anonymous');
 
     setTransitioning(true);
+
+    // 1) Panorama IA (relleno lateral)
     loader.load(current.panorama_url, (newTex: any) => {
-      // Dispose previous
       if (s.texture) s.texture.dispose();
       s.texture = newTex;
       s.material.map = newTex;
       s.material.color.set(0xffffff);
       s.material.needsUpdate = true;
-      // Reset rotación a 0 al cambiar de escena
       s.targetRotX = 0;
       s.targetRotY = 0;
       setTimeout(() => setTransitioning(false), 200);
     });
-  }, [current?.panorama_url]);
+
+    // 2) Foto ORIGINAL del cliente — ancla frontal, fidelidad 100%
+    if (current.image_url && s.photoMaterial && s.photoMesh) {
+      loader.load(current.image_url, (photoTex: any) => {
+        if (s.photoTexture) s.photoTexture.dispose();
+        s.photoTexture = photoTex;
+        s.photoMaterial.map = photoTex;
+        s.photoMaterial.color.set(0xffffff);
+        s.photoMaterial.needsUpdate = true;
+
+        // Ajustar geometría al aspect ratio REAL de la foto
+        // así no se distorsiona (importante para inmobiliarias).
+        const img = photoTex.image;
+        if (img && img.width && img.height) {
+          const aspect = img.width / img.height;
+          // Altura base 360u; ancho = 360 * aspect. Capeado para no ocupar más del FOV.
+          const targetH = 360;
+          const targetW = Math.min(720, targetH * aspect);
+          // Reemplazar geometría con la nueva proporción
+          const oldGeo = s.photoMesh.geometry;
+          s.photoMesh.geometry = new s.THREE.PlaneGeometry(targetW, targetH);
+          if (oldGeo) oldGeo.dispose();
+          // Re-anclar posición y orientación
+          s.photoMesh.position.set(480, 0, 0);
+          s.photoMesh.lookAt(0, 0, 0);
+        }
+      });
+    }
+  }, [current?.panorama_url, current?.image_url]);
 
   // Navegación
   const goToScene = useCallback((idx: number) => {

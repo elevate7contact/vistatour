@@ -57,7 +57,19 @@ async function skyboxStartJob(prompt: string, controlImageUrl: string | null): P
   const fd = new FormData();
   fd.append('prompt', prompt);
   fd.append('skybox_style_id', '67');
-  fd.append('enhance_prompt', 'true');
+  // CRÍTICO PARA FIDELIDAD:
+  // - enhance_prompt=false → Skybox NO reescribe el prompt agregando detalles inventados
+  // - prompt_strength bajo → minimiza la creatividad sobre la foto real
+  // - negative_text → bloquea explícitamente la invención de muebles/objetos
+  fd.append('enhance_prompt', 'false');
+  fd.append('prompt_strength', '0.3');
+  fd.append(
+    'negative_text',
+    'different furniture, additional objects, hallucinated elements, fake plants, ' +
+    'extra paintings, wrong colors, modified architecture, invented windows, ' +
+    'decorative elements not present in original, changed materials, ' +
+    'cartoon, illustration, anime, low quality, distorted, warped'
+  );
 
   if (controlImageUrl) {
     try {
@@ -65,6 +77,9 @@ async function skyboxStartJob(prompt: string, controlImageUrl: string | null): P
       if (imgRes.ok) {
         const blob = await imgRes.blob();
         fd.append('control_image', blob, 'reference.jpg');
+        // 'remix' usa la imagen como seed visual fuerte (preserva estructura, colores, mobiliario)
+        // mucho más estricto que el default (sin control_model)
+        fd.append('control_model', 'remix');
       }
     } catch (e) {
       // sin imagen de control — continúa solo con prompt
