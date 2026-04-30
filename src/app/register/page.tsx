@@ -27,15 +27,33 @@ export default function RegisterPage() {
     const { data, error } = await supabase.auth.signUp({ email, password });
     setLoading(false);
     if (error) {
-      setErr('No pudimos crear tu cuenta. Intenta con otro correo.');
+      const m = error.message?.toLowerCase() ?? '';
+      if (m.includes('already registered') || m.includes('already exists') || m.includes('user already')) {
+        setErr('Ese correo ya está registrado. Intenta iniciar sesión.');
+      } else if (m.includes('rate') || m.includes('too many')) {
+        setErr('Demasiados intentos. Espera 1 minuto y vuelve a intentar.');
+      } else if (m.includes('password')) {
+        setErr('Contraseña inválida. Usa al menos 6 caracteres.');
+      } else {
+        setErr(`No pudimos crear tu cuenta: ${error.message}`);
+      }
       return;
     }
+    // Si Supabase devolvió sesión → email confirmation está OFF, entra directo
     if (data.session) {
       router.push('/dashboard');
       router.refresh();
       return;
     }
-    setMsg('Te enviamos un correo para confirmar tu cuenta. Revisa tu bandeja.');
+    // Si no hay sesión → email confirmation está ON, intentar login automático
+    // (a veces Supabase devuelve user sin session cuando el email ya está confirmado en otra cuenta)
+    const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginData?.session) {
+      router.push('/dashboard');
+      router.refresh();
+      return;
+    }
+    setMsg('Te enviamos un correo para confirmar tu cuenta. Si no llega en 2 minutos, contáctanos.');
   }
 
   return (

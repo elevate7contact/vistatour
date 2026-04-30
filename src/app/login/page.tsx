@@ -21,7 +21,17 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setErr('No pudimos iniciar sesión. Revisa tu correo y contraseña.');
+      // Mensajes específicos para cada caso — antes era todo "revisa tu correo y contraseña"
+      const msg = error.message?.toLowerCase() ?? '';
+      if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+        setErr('Tu cuenta existe pero no está confirmada. Revisa tu correo o contáctanos para activarla manualmente.');
+      } else if (msg.includes('invalid login credentials') || msg.includes('invalid')) {
+        setErr('Correo o contraseña incorrectos.');
+      } else if (msg.includes('rate') || msg.includes('too many')) {
+        setErr('Demasiados intentos. Espera 1 minuto y vuelve a intentar.');
+      } else {
+        setErr(`No pudimos iniciar sesión: ${error.message}`);
+      }
       return;
     }
     router.push('/dashboard');
