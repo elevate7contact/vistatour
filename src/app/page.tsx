@@ -15,8 +15,10 @@ export default function HomePage() {
             <span className="serif-italic text-paseo-gold">Es un paseo.</span>
           </h1>
           <p className="mt-6 text-base md:text-lg text-paseo-cream/75 max-w-xl mx-auto">
-            Convierte 5 a 7 fotos de un inmueble en un recorrido virtual inmersivo en 90 segundos.
-            Sin equipos caros. Sin curva de aprendizaje. Solo fotos.
+            <strong className="text-paseo-cream">1 foto</strong> = vista 360° inmersiva.{' '}
+            <strong className="text-paseo-cream">5 fotos</strong> = recorrido navegable estilo Google Street View.
+            <br />
+            Sin cámara especial. Sin productora. En 90 segundos.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
@@ -113,8 +115,8 @@ export default function HomePage() {
         </h2>
         <div className="grid md:grid-cols-3 gap-6">
           {[
-            { n: '01', t: 'Sube 5 a 7 fotos', d: 'Jpg, png o webp. Desde tu celular o computador.' },
-            { n: '02', t: 'La IA ordena el recorrido', d: 'Detecta espacios, paletas y flujo natural de la propiedad.' },
+            { n: '01', t: 'Sube 1 o varias fotos', d: '1 foto = vista 360° individual. 5+ fotos = recorrido navegable. JPG, PNG o WEBP.' },
+            { n: '02', t: 'La IA arma el paseo', d: 'Genera panoramas 360°, detecta espacios y conecta habitaciones con hotspots automáticos.' },
             { n: '03', t: 'Compartes un link', d: 'Un paseo inmersivo listo para WhatsApp, Instagram o email.' }
           ].map((s) => (
             <div key={s.n} className="card p-8">

@@ -4,9 +4,17 @@ import { useCallback, useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 
 const MAX = 7;
-const MIN = 5;
+const MIN = 1; // 1 foto = vista 360 individual · 5+ fotos = tour navegable
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Etiqueta dinámica del modo según cantidad de fotos
+function modeLabel(count: number) {
+  if (count === 0) return null;
+  if (count === 1) return { name: 'Vista 360° individual', desc: '1 panorama inmersivo de un espacio' };
+  if (count <= 4) return { name: 'Tour pequeño', desc: 'recorrido básico con hotspots entre habitaciones' };
+  return { name: 'Tour completo', desc: 'recorrido estilo Google Street View entre todas las habitaciones' };
+}
 
 export interface DropzoneFotosProps {
   onChange: (files: File[]) => void;
@@ -87,7 +95,10 @@ export default function DropzoneFotos({ onChange, disabled }: DropzoneFotosProps
           Arrastra tus fotos o <span className="text-paseo-gold underline">haz clic</span>
         </p>
         <p className="text-sm text-paseo-cream/55 mt-1">
-          Entre {MIN} y {MAX} fotos · JPG, PNG, WEBP · Máx 10 MB c/u
+          1 foto = vista 360° · 5+ fotos = tour navegable
+        </p>
+        <p className="text-xs text-paseo-cream/40 mt-1">
+          JPG, PNG, WEBP · Máx 10 MB c/u · hasta {MAX} fotos
         </p>
         <input
           ref={inputRef}
@@ -115,6 +126,22 @@ export default function DropzoneFotos({ onChange, disabled }: DropzoneFotosProps
               {files.length < MIN ? `Faltan ${MIN - files.length}` : 'Listo para armar'}
             </span>
           </div>
+
+          {/* Modo detectado según cantidad */}
+          {(() => {
+            const mode = modeLabel(files.length);
+            if (!mode) return null;
+            return (
+              <div className="mt-3 p-3 rounded-lg border border-paseo-gold/20 bg-paseo-gold/5">
+                <div className="text-sm text-paseo-gold font-medium">
+                  {mode.name}
+                </div>
+                <div className="text-xs text-paseo-cream/60 mt-0.5">
+                  {mode.desc}
+                </div>
+              </div>
+            );
+          })()}
           <div className="mt-4 grid grid-cols-3 md:grid-cols-4 gap-3">
             {previews.map((src, i) => (
               <div key={i} className="relative aspect-square rounded-lg overflow-hidden card p-0">
