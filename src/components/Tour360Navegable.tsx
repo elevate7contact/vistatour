@@ -15,7 +15,8 @@
  * Three.js se carga dinámicamente para no engordar el bundle inicial.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Home, Maximize2, Minimize2, Map, X, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Maximize2, Minimize2, Map as MapIcon, X, RotateCcw } from 'lucide-react';
+// Map renombrado a MapIcon para no sombrear el Map nativo de JavaScript
 
 export interface Scene360 {
   id: string;
@@ -437,7 +438,7 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
           aria-label="Mapa"
           title="Mapa (M)"
         >
-          <Map size={18} />
+          <MapIcon size={18} />
         </button>
         <button
           onClick={toggleFull}

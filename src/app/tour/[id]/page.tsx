@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import TourViewer, { Scene } from '@/components/TourViewer';
-import dynamic from 'next/dynamic';
+import dynamicImport from 'next/dynamic';
 import type { Scene360 } from '@/components/Tour360Navegable';
 
-const Tour360Navegable = dynamic(() => import('@/components/Tour360Navegable'), { ssr: false });
+// Renombrado a `dynamicImport` para no colisionar con la export `dynamic`
+// que Next.js usa como route segment config.
+const Tour360Navegable = dynamicImport(() => import('@/components/Tour360Navegable'), { ssr: false });
 
-export const dynamic_setting = 'force-dynamic';
 export const dynamic = 'force-dynamic';
 
 interface TourRow {
