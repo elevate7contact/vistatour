@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Home, Maximize2, Minimize2, Map as MapIcon, X, RotateCcw } from 'lucide-react';
+import FeedbackWidget from './FeedbackWidget';
 // Map renombrado a MapIcon para no sombrear el Map nativo de JavaScript
 
 export interface Scene360 {
@@ -509,6 +510,9 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
           ))}
         </div>
       )}
+
+      {/* Widget de feedback flotante — para realtors que ven la demo */}
+      <FeedbackWidget tourId={current?.id} />
     </div>
   );
 }
