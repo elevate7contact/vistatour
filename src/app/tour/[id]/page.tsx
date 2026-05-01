@@ -13,6 +13,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import dynamicImport from 'next/dynamic';
 import type { Scene360 } from '@/components/Tour360Navegable';
+import TourProgressView from '@/components/TourProgressView';
 
 // Renombrado a `dynamicImport` para no colisionar con la export `dynamic`
 // que Next.js usa como route segment config.
@@ -105,49 +106,11 @@ export default async function TourPage({ params }: { params: { id: string } }) {
   const errorCount = list.filter((s) => s.panorama_status === 'error').length;
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-paseo-dark text-paseo-cream">
-      <div className="text-center max-w-md px-6">
-        <div className="serif-italic text-paseo-gold text-4xl mb-3">
-          {errorCount > 0 ? 'Generando tu paseo (con reintentos)…' : 'Generando tu paseo 360°…'}
-        </div>
-        <p className="text-paseo-cream/60 text-sm mb-6">
-          {completeCount} de {list.length} habitaciones listas. Esto toma 60-90 segundos.
-        </p>
-        <div className="space-y-2">
-          {list.map((s) => (
-            <div key={s.id} className="flex items-center gap-3 text-sm">
-              <span className="text-paseo-cream/80 capitalize w-32 text-left">
-                {s.tipo_espacio ?? `Escena ${s.orden + 1}`}
-              </span>
-              <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${
-                    s.panorama_status === 'complete'
-                      ? 'bg-paseo-gold w-full'
-                      : s.panorama_status === 'generating'
-                      ? 'bg-paseo-gold/60 w-2/3'
-                      : s.panorama_status === 'error'
-                      ? 'bg-red-500/60 w-1/2'
-                      : 'bg-white/20 w-1/4'
-                  }`}
-                />
-              </div>
-              <span className="text-xs text-paseo-cream/50 w-20 text-right">
-                {s.panorama_status === 'complete'
-                  ? '✓ Listo'
-                  : s.panorama_status === 'generating'
-                  ? 'Generando…'
-                  : s.panorama_status === 'error'
-                  ? 'Reintentando'
-                  : 'En cola'}
-              </span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-6 text-xs text-paseo-cream/40">
-          Recarga en 30 segundos para ver el progreso.
-        </p>
-      </div>
-    </main>
+    <TourProgressView
+      tourId={t.id}
+      scenes={list}
+      completeCount={completeCount}
+      errorCount={errorCount}
+    />
   );
 }

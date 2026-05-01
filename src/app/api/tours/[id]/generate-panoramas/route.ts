@@ -188,9 +188,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
 /**
  * GET: consulta progreso de generación. Si una scene completó en Skybox,
- *      actualiza Supabase con la URL final.
+ *      actualiza Supabase con la URL final. Cuando TODAS las escenas
+ *      están listas Y hay 2+, auto-dispara detect-hotspots para que el
+ *      tour sea navegable entre habitaciones.
  */
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supa = createAdminClient();
     const { data: scenes, error } = await supa
@@ -229,6 +231,29 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     const completeCount = updated.filter((u) => u.status === 'complete').length;
     const allComplete = completeCount === updated.length;
+
+    // Auto-disparar detect-hotspots cuando TODOS los panoramas terminen Y haya 2+ escenas.
+    // Idempotente: si ya existen hotspots, detect-hotspots los re-genera sin romper nada.
+    // Fire-and-forget: no bloquea la respuesta.
+    if (allComplete && updated.length >= 2) {
+      // Verificar si las escenas ya tienen hotspots (evitar disparar 2 veces)
+      const { data: scenesCheck } = await supa
+        .from('scenes')
+        .select('hotspots')
+        .eq('tour_id', params.id);
+      const anyHasHotspots = (scenesCheck ?? []).some(
+        (s: any) => Array.isArray(s.hotspots) && s.hotspots.length > 0
+      );
+      if (!anyHasHotspots) {
+        const origin = req.headers.get('origin') || `https://${req.headers.get('host')}`;
+        fetch(`${origin}/api/tours/${params.id}/detect-hotspots`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch((e) => {
+          console.error('[generate-panoramas/GET] auto-trigger hotspots falló:', e);
+        });
+      }
+    }
 
     return NextResponse.json({
       tourId: params.id,
