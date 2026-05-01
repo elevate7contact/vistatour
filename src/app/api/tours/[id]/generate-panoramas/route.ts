@@ -22,6 +22,33 @@ function skyboxKey() {
   return k;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// CONFIG DE FIDELIDAD — single source of truth para Skybox API params.
+// Tunear acá si Skybox actualiza su modelo o aparecen nuevos parámetros.
+//
+// Por qué cada uno:
+//  - skybox_style_id=67 → estilo "Realistic photo", el más fiel a foto real.
+//  - enhance_prompt=false → Skybox NO reescribe el prompt agregando detalles.
+//  - prompt_strength=0.3 → minimiza creatividad sobre la foto del cliente.
+//  - control_model=remix → la foto subida actúa como seed visual fuerte.
+//  - negative_text → bloqueo explícito de invenciones comunes.
+//
+// IMPORTANTE: estos params + descripcion_fiel de Claude + foto-ancla
+// frontal en el viewer son las TRES capas que garantizan fidelidad.
+// Si querés relajar fidelidad por velocidad, tocá ACÁ — no en el viewer.
+// ─────────────────────────────────────────────────────────────────────
+const SKYBOX_FIDELITY_CONFIG = {
+  styleId: '67',
+  enhancePrompt: 'false',
+  promptStrength: '0.3',
+  controlModel: 'remix',
+  negativeText:
+    'different furniture, additional objects, hallucinated elements, fake plants, ' +
+    'extra paintings, wrong colors, modified architecture, invented windows, ' +
+    'decorative elements not present in original, changed materials, ' +
+    'cartoon, illustration, anime, low quality, distorted, warped',
+} as const;
+
 const ROOM_PROMPTS: Record<string, string> = {
   sala: 'modern bright living room interior, comfortable sofa, large windows with natural light, wooden floor, real estate photography, equirectangular 360 panorama',
   salon: 'modern bright living room interior, comfortable sofa, large windows with natural light, wooden floor, real estate photography, equirectangular 360 panorama',
@@ -56,20 +83,10 @@ function buildPrompt(tipoEspacio: string | null, paleta: any): string {
 async function skyboxStartJob(prompt: string, controlImageUrl: string | null): Promise<number | string> {
   const fd = new FormData();
   fd.append('prompt', prompt);
-  fd.append('skybox_style_id', '67');
-  // CRÍTICO PARA FIDELIDAD:
-  // - enhance_prompt=false → Skybox NO reescribe el prompt agregando detalles inventados
-  // - prompt_strength bajo → minimiza la creatividad sobre la foto real
-  // - negative_text → bloquea explícitamente la invención de muebles/objetos
-  fd.append('enhance_prompt', 'false');
-  fd.append('prompt_strength', '0.3');
-  fd.append(
-    'negative_text',
-    'different furniture, additional objects, hallucinated elements, fake plants, ' +
-    'extra paintings, wrong colors, modified architecture, invented windows, ' +
-    'decorative elements not present in original, changed materials, ' +
-    'cartoon, illustration, anime, low quality, distorted, warped'
-  );
+  fd.append('skybox_style_id', SKYBOX_FIDELITY_CONFIG.styleId);
+  fd.append('enhance_prompt', SKYBOX_FIDELITY_CONFIG.enhancePrompt);
+  fd.append('prompt_strength', SKYBOX_FIDELITY_CONFIG.promptStrength);
+  fd.append('negative_text', SKYBOX_FIDELITY_CONFIG.negativeText);
 
   if (controlImageUrl) {
     try {
@@ -77,9 +94,7 @@ async function skyboxStartJob(prompt: string, controlImageUrl: string | null): P
       if (imgRes.ok) {
         const blob = await imgRes.blob();
         fd.append('control_image', blob, 'reference.jpg');
-        // 'remix' usa la imagen como seed visual fuerte (preserva estructura, colores, mobiliario)
-        // mucho más estricto que el default (sin control_model)
-        fd.append('control_model', 'remix');
+        fd.append('control_model', SKYBOX_FIDELITY_CONFIG.controlModel);
       }
     } catch (e) {
       // sin imagen de control — continúa solo con prompt

@@ -13,3 +13,4 @@ dist/
 _setup_supabase.py
 .vercel
 next-env.d.ts
+_check_vercel.py
