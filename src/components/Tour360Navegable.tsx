@@ -122,22 +122,59 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
       const sphere = new THREE.Mesh(geometry, material);
       scene.add(sphere);
 
-      // ─── FOTO-ANCLA (Camino B — fidelidad fotográfica) ───────────────────
-      // Plano curvado más cercano a la cámara que la esfera de panorama,
-      // anclado al frente (+X). Renderiza la foto ORIGINAL del cliente.
-      // El realtor ve SU foto exacta cuando mira al frente. Solo al rotar
-      // ~70° lateralmente aparece el panorama IA (relleno).
-      const photoGeo = new THREE.PlaneGeometry(560, 360);
+      // ─── FOTO-ANCLA v2 (segmento esférico curvado + alpha feathering) ──
+      // Antes: plano flat → se veía como cuadro pegado.
+      // Ahora: segmento de esfera (480u radio) que sigue la curvatura del
+      // panorama (500u). FOV inicial ~75°×50°, se reajusta al aspect real
+      // de cada foto. Bordes con feathering (alpha gradient) → la transición
+      // foto→panorama IA es suave en lugar de un corte duro.
+      const PHOTO_RADIUS = 480;
+      const fovH0 = Math.PI * 0.42;   // ~75° horizontal
+      const fovV0 = Math.PI * 0.28;   // ~50° vertical
+      const photoGeo = new THREE.SphereGeometry(
+        PHOTO_RADIUS, 64, 32,
+        -fovH0 / 2, fovH0,
+        Math.PI / 2 - fovV0 / 2, fovV0,
+      );
+
+      // Máscara alpha programática: blanco al centro, fade a negro en los
+      // bordes (feather 10% por lado). Two linear gradients en multiply.
+      function createFeatherMask(w: number, h: number, feather = 0.10) {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d')!;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'multiply';
+        // Horizontal
+        let g = ctx.createLinearGradient(0, 0, w, 0);
+        g.addColorStop(0, '#000');
+        g.addColorStop(feather, '#FFF');
+        g.addColorStop(1 - feather, '#FFF');
+        g.addColorStop(1, '#000');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        // Vertical
+        g = ctx.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, '#000');
+        g.addColorStop(feather, '#FFF');
+        g.addColorStop(1 - feather, '#FFF');
+        g.addColorStop(1, '#000');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+        const tex = new THREE.CanvasTexture(c);
+        return tex;
+      }
+      const featherMask = createFeatherMask(1024, 720);
+
       const photoMaterial = new THREE.MeshBasicMaterial({
-        color: 0x111111,         // negro hasta que cargue la textura
-        side: THREE.DoubleSide,
-        transparent: false,
+        color: 0x111111,
+        alphaMap: featherMask,
+        transparent: true,
+        side: THREE.BackSide,    // se ve desde adentro de la esfera
+        depthTest: false,
       });
       const photoMesh = new THREE.Mesh(photoGeo, photoMaterial);
-      photoMesh.position.set(480, 0, 0);   // 480u sobre +X (cámara mira a +X por default)
-      photoMesh.lookAt(0, 0, 0);            // gira el plano para encarar la cámara
-      photoMesh.renderOrder = 2;            // se dibuja después del sphere → siempre encima
-      photoMaterial.depthTest = false;      // no es ocultado por la esfera
+      photoMesh.renderOrder = 2;
       scene.add(photoMesh);
       // ───────────────────────────────────────────────────────────────────
 
@@ -256,7 +293,7 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
       setTimeout(() => setTransitioning(false), 200);
     });
 
-    // 2) Foto ORIGINAL del cliente — ancla frontal, fidelidad 100%
+    // 2) Foto ORIGINAL del cliente — ancla frontal sobre segmento esférico
     if (current.image_url && s.photoMaterial && s.photoMesh) {
       loader.load(current.image_url, (photoTex: any) => {
         if (s.photoTexture) s.photoTexture.dispose();
@@ -265,21 +302,22 @@ export default function Tour360Navegable({ nombre, scenes }: Props) {
         s.photoMaterial.color.set(0xffffff);
         s.photoMaterial.needsUpdate = true;
 
-        // Ajustar geometría al aspect ratio REAL de la foto
-        // así no se distorsiona (importante para inmobiliarias).
+        // Reajustar el FOV del segmento esférico al aspect real de la foto.
+        // FOV horizontal fijo en 75°; FOV vertical = 75° / aspect.
+        // Esto evita distorsión y mantiene la proporción del cliente.
         const img = photoTex.image;
         if (img && img.width && img.height) {
-          const aspect = img.width / img.height;
-          // Altura base 360u; ancho = 360 * aspect. Capeado para no ocupar más del FOV.
-          const targetH = 360;
-          const targetW = Math.min(720, targetH * aspect);
-          // Reemplazar geometría con la nueva proporción
+          const aspect = img.width / img.height;     // ej 1.5 para 3:2
+          const fovH = Math.PI * 0.42;                // 75° fijo
+          const fovV = Math.min(Math.PI * 0.40, fovH / aspect);
+          const PHOTO_RADIUS = 480;
           const oldGeo = s.photoMesh.geometry;
-          s.photoMesh.geometry = new s.THREE.PlaneGeometry(targetW, targetH);
+          s.photoMesh.geometry = new s.THREE.SphereGeometry(
+            PHOTO_RADIUS, 64, 32,
+            -fovH / 2, fovH,
+            Math.PI / 2 - fovV / 2, fovV,
+          );
           if (oldGeo) oldGeo.dispose();
-          // Re-anclar posición y orientación
-          s.photoMesh.position.set(480, 0, 0);
-          s.photoMesh.lookAt(0, 0, 0);
         }
       });
     }

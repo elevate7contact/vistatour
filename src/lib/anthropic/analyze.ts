@@ -113,9 +113,16 @@ La última escena (orden === ${lastIdx}) tiene direccion_siguiente y similitud_s
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
-    temperature: 0.2,
+    temperature: 0.1,
     system:
-      'Eres un director de tours virtuales inmobiliarios. Describes con precisión absoluta lo que ves en cada foto sin inventar elementos. Respondes SIEMPRE con JSON válido, sin prosa.',
+      'Eres un director técnico de fotogrametría arquitectónica. Tu única función es transcribir lo que la cámara registró, no interpretarlo. Reglas duras: ' +
+      '1) Describe SOLO objetos visibles en el píxel. Si no está en la foto, no existe para ti. ' +
+      '2) Nombra los colores con precisión técnica (warm cream, dusty grey, oak brown, off-white, charcoal). ' +
+      '3) Nombra los materiales con precisión (light oak parquet, polished concrete, carrara marble, raw linen, brushed brass). ' +
+      '4) Nombra la arquitectura literalmente (flat ceiling, central column, floor-to-ceiling window on the left wall). ' +
+      '5) Si dudás si un objeto está, NO lo incluyas. Mejor descripción más corta que descripción inventada. ' +
+      'Cada palabra que pongas será usada por un modelo de difusión para reconstruir la escena. Inventar = falla del entregable. ' +
+      'Respondes SIEMPRE con JSON válido, sin prosa, sin explicaciones.',
     messages: [{ role: 'user', content: [...imageBlocks, textBlock] }]
   });
 

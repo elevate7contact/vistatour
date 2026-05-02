@@ -40,13 +40,24 @@ function skyboxKey() {
 const SKYBOX_FIDELITY_CONFIG = {
   styleId: '67',
   enhancePrompt: 'false',
-  promptStrength: '0.3',
+  // v3 — fidelidad máxima. prompt_strength bajado de 0.3 a 0.15 para que
+  // Skybox prácticamente NO improvise sobre la foto del cliente.
+  promptStrength: '0.15',
   controlModel: 'remix',
+  // Negative_text reforzado con prohibiciones explícitas de los errores
+  // que habíamos visto: zoom raro, escalado anormal, muebles fantasma,
+  // arquitectura inventada, paleta distinta a la foto.
   negativeText:
-    'different furniture, additional objects, hallucinated elements, fake plants, ' +
-    'extra paintings, wrong colors, modified architecture, invented windows, ' +
-    'decorative elements not present in original, changed materials, ' +
-    'cartoon, illustration, anime, low quality, distorted, warped',
+    'different furniture, different sofa, different bed, different table, ' +
+    'additional objects, hallucinated elements, fake plants, fake artwork, ' +
+    'extra paintings, wrong colors, color shift, oversaturated, ' +
+    'modified architecture, invented windows, invented doors, invented walls, ' +
+    'decorative elements not present in original photo, changed materials, ' +
+    'changed flooring, changed ceiling, scaled differently, distorted perspective, ' +
+    'zoom in, zoom out, cropped, warped geometry, stretched proportions, ' +
+    'different room size, different room layout, mirrored layout, ' +
+    'cartoon, illustration, anime, painting, sketch, ' +
+    'low quality, blurry, watermark, signature, text, logo',
 } as const;
 
 const ROOM_PROMPTS: Record<string, string> = {
