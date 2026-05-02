@@ -88,6 +88,20 @@ export async function POST(req: NextRequest) {
   if (!nombre) {
     return NextResponse.json({ error: 'El paseo necesita un nombre.' }, { status: 400 });
   }
+
+  // Metadata opcional del inmueble (para realtors premium)
+  const metadata: Record<string, string | number> = {};
+  const metaFields = ['precio', 'ubicacion', 'area_m2', 'habitaciones', 'banos',
+                      'realtor_nombre', 'realtor_telefono', 'realtor_email', 'realtor_logo_url'];
+  for (const f of metaFields) {
+    const v = formData.get(f);
+    if (typeof v === 'string' && v.trim()) {
+      metadata[f] = (f === 'area_m2' || f === 'habitaciones' || f === 'banos')
+        ? Number(v) || 0
+        : v.trim();
+    }
+  }
+
   const rawFiles = formData.getAll('files').filter((v): v is File => v instanceof File);
   if (rawFiles.length < 1 || rawFiles.length > 7) {
     return NextResponse.json({ error: 'Sube entre 1 y 7 fotos.' }, { status: 400 });
@@ -112,7 +126,12 @@ export async function POST(req: NextRequest) {
   // 1) Create tour row
   const { data: tour, error: tourErr } = await admin
     .from('tours')
-    .insert({ user_id: userId, nombre, status: 'processing' })
+    .insert({
+      user_id: userId,
+      nombre,
+      status: 'processing',
+      metadata: Object.keys(metadata).length ? metadata : {},
+    })
     .select('id')
     .single();
 

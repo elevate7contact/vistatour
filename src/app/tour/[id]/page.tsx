@@ -25,6 +25,8 @@ interface TourRow {
   id: string;
   nombre: string;
   status: 'processing' | 'ready' | 'failed';
+  user_id: string;
+  metadata: Record<string, any> | null;
 }
 
 interface SceneRow {
@@ -42,12 +44,16 @@ export default async function TourPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const { data: tour } = await supabase
     .from('tours')
-    .select('id, nombre, status')
+    .select('id, nombre, status, user_id, metadata')
     .eq('id', params.id)
     .single();
 
   if (!tour) notFound();
   const t = tour as TourRow;
+
+  // Detectar si el visitante actual es el dueño (para mostrar editor de hotspots)
+  const { data: userRes } = await supabase.auth.getUser();
+  const isOwner = userRes.user?.id === t.user_id;
 
   if (t.status === 'processing') {
     return (
@@ -97,7 +103,15 @@ export default async function TourPage({ params }: { params: { id: string } }) {
       paleta_hex: s.paleta_hex,
       hotspots: Array.isArray(s.hotspots) ? s.hotspots : [],
     }));
-    return <Tour360Navegable nombre={t.nombre} scenes={scenes360} />;
+    return (
+      <Tour360Navegable
+        nombre={t.nombre}
+        scenes={scenes360}
+        metadata={t.metadata ?? null}
+        tourId={t.id}
+        canEdit={isOwner}
+      />
+    );
   }
 
   // CASO 2 — Algunas escenas todavía generando o pendientes → pantalla de progreso
