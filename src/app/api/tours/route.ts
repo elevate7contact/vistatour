@@ -8,13 +8,65 @@ export const maxDuration = 60;
 
 const BUCKET = 'tour-photos';
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;   // panoramas equirectangulares pesan más
+
+// Aspect ratio mínimo para considerar una foto como panorama equirectangular
+// (modo Pano del iPhone/Android genera 2:1 o más; cámaras 360 pro = 2:1 exacto).
+const PANORAMA_MIN_ASPECT = 1.85;
+// Resolución mínima recomendada para calidad realtor premium.
+const PANORAMA_MIN_WIDTH = 3072;
 
 function extFromType(t: string): string {
   if (t === 'image/jpeg') return 'jpg';
   if (t === 'image/png') return 'png';
   if (t === 'image/webp') return 'webp';
   return 'bin';
+}
+
+/**
+ * Parser inline de dimensiones para JPG/PNG/WebP — sin dependencia externa.
+ * Lee solo los headers necesarios. ~30 líneas, suficiente para nuestro caso.
+ */
+function getImageDimensions(buf: Buffer): { width: number; height: number } | null {
+  // PNG: bytes 16-23 tras "PNG\r\n\x1a\n" header
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+    return {
+      width:  buf.readUInt32BE(16),
+      height: buf.readUInt32BE(20),
+    };
+  }
+  // JPG: buscar SOF marker (0xFFC0-0xFFCF excepto C4, C8, CC)
+  if (buf[0] === 0xFF && buf[1] === 0xD8) {
+    let i = 2;
+    while (i < buf.length - 9) {
+      if (buf[i] !== 0xFF) { i++; continue; }
+      const marker = buf[i + 1];
+      if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+        return {
+          height: buf.readUInt16BE(i + 5),
+          width:  buf.readUInt16BE(i + 7),
+        };
+      }
+      const segLen = buf.readUInt16BE(i + 2);
+      i += 2 + segLen;
+    }
+  }
+  // WebP VP8/VP8L/VP8X (simplificado para VP8X que es lo común en panoramas)
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+    const chunk = buf.toString('ascii', 12, 16);
+    if (chunk === 'VP8X') {
+      const w = (buf.readUIntLE(24, 3) + 1);
+      const h = (buf.readUIntLE(27, 3) + 1);
+      return { width: w, height: h };
+    }
+    if (chunk === 'VP8 ') {
+      // VP8 lossy: dimensions in start of frame data
+      const w = buf.readUInt16LE(26) & 0x3FFF;
+      const h = buf.readUInt16LE(28) & 0x3FFF;
+      return { width: w, height: h };
+    }
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -73,30 +125,57 @@ export async function POST(req: NextRequest) {
   const tourId = tour.id as string;
 
   try {
-    // 2) Upload files
+    // 2) Upload files + DETECTAR si cada foto es panorama equirectangular nativo
     const urls: string[] = [];
+    const fileMeta: Array<{ isNativePanorama: boolean; width: number; height: number }> = [];
+
     for (let i = 0; i < rawFiles.length; i++) {
       const f = rawFiles[i];
       const ext = extFromType(f.type);
       const path = `${userId}/${tourId}/${i}-${crypto.randomUUID()}.${ext}`;
       const buf = Buffer.from(await f.arrayBuffer());
+
+      // ── Detección de panorama nativo ─────────────────────────────────
+      const dims = getImageDimensions(buf);
+      const isNativePanorama = !!(dims && (dims.width / dims.height) >= PANORAMA_MIN_ASPECT);
+
+      // Validación calidad premium: si es panorama nativo, exigir resolución mínima
+      // para que apartamentos de alta gama no salgan pixelados.
+      if (isNativePanorama && dims && dims.width < PANORAMA_MIN_WIDTH) {
+        throw new Error(
+          `La foto ${i + 1} parece un panorama (${dims.width}×${dims.height}) ` +
+          `pero la resolución es baja. Para calidad realtor premium subila al menos ` +
+          `en ${PANORAMA_MIN_WIDTH}px de ancho.`
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       const { error: upErr } = await admin.storage
         .from(BUCKET)
         .upload(path, buf, { contentType: f.type, upsert: false });
       if (upErr) throw new Error(`Error subiendo foto ${i + 1}: ${upErr.message}`);
       const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
       urls.push(pub.publicUrl);
+      fileMeta.push({
+        isNativePanorama,
+        width: dims?.width ?? 0,
+        height: dims?.height ?? 0,
+      });
     }
 
-    // 3) Claude analysis
+    // 3) Claude analysis (sigue corriendo para tipo_espacio + hotspots,
+    //    aunque la foto sea panorama nativo)
     const analysis = (await analyzePhotos(urls)) as Array<SceneAnalysis & { foto_original?: number }>;
 
-    // 4) Build scene rows using foto_original mapping (fallback to identity).
+    // 4) Build scene rows. Si la foto es panorama nativo: panorama_url = image_url
+    //    directamente y panorama_status = 'complete'. Bypass total de Skybox.
     const rows = analysis.map((s, i) => {
       const srcIdx =
         typeof s.foto_original === 'number' && s.foto_original >= 0 && s.foto_original < urls.length
           ? s.foto_original
           : i;
+      const meta = fileMeta[srcIdx];
+      const isNative = meta?.isNativePanorama ?? false;
       return {
         tour_id: tourId,
         orden: s.orden,
@@ -105,10 +184,12 @@ export async function POST(req: NextRequest) {
         paleta_hex: s.paleta_hex,
         direccion_siguiente: s.direccion_siguiente,
         similitud_siguiente: s.similitud_siguiente,
-        // Prompt fiel a la foto real — Skybox usará esto para que el panorama
-        // respete los muebles/colores/materiales reales sin inventar nada.
-        skybox_prompt: s.descripcion_fiel,
-        panorama_status: 'pending',
+        // Para panoramas nativos NO necesitamos prompt Skybox — la foto YA es 360°.
+        skybox_prompt: isNative ? null : s.descripcion_fiel,
+        // Panorama nativo: panorama_url = image_url, status = complete (no pasa por Skybox).
+        // Foto plana: pendiente, Skybox la procesa después.
+        panorama_url: isNative ? urls[srcIdx] : null,
+        panorama_status: isNative ? 'complete' : 'pending',
       };
     });
 
