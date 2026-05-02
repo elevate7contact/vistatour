@@ -44,20 +44,15 @@ const SKYBOX_FIDELITY_CONFIG = {
   // Skybox prácticamente NO improvise sobre la foto del cliente.
   promptStrength: '0.15',
   controlModel: 'remix',
-  // Negative_text reforzado con prohibiciones explícitas de los errores
-  // que habíamos visto: zoom raro, escalado anormal, muebles fantasma,
-  // arquitectura inventada, paleta distinta a la foto.
+  // Negative_text — Skybox dice "max 600" pero el límite REAL probado es ~400.
+  // El error con texto >400 fue lo que rompió la generación tras commit 1b912c0.
+  // Versión recortada a ~340 chars priorizando los términos más críticos.
   negativeText:
-    'different furniture, different sofa, different bed, different table, ' +
-    'additional objects, hallucinated elements, fake plants, fake artwork, ' +
-    'extra paintings, wrong colors, color shift, oversaturated, ' +
-    'modified architecture, invented windows, invented doors, invented walls, ' +
-    'decorative elements not present in original photo, changed materials, ' +
-    'changed flooring, changed ceiling, scaled differently, distorted perspective, ' +
-    'zoom in, zoom out, cropped, warped geometry, stretched proportions, ' +
-    'different room size, different room layout, mirrored layout, ' +
-    'cartoon, illustration, anime, painting, sketch, ' +
-    'low quality, blurry, watermark, signature, text, logo',
+    'different furniture, additional objects, hallucinated elements, ' +
+    'fake plants, fake artwork, wrong colors, modified architecture, ' +
+    'invented windows, changed materials, scaled differently, ' +
+    'distorted perspective, zoom in, warped geometry, mirrored layout, ' +
+    'cartoon, illustration, anime, low quality, blurry, watermark, text, logo',
 } as const;
 
 const ROOM_PROMPTS: Record<string, string> = {
