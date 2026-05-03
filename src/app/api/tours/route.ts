@@ -123,21 +123,27 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  // 1) Create tour row
-  const { data: tour, error: tourErr } = await admin
+  // 1) Create tour row — defensivo si migración 0003 (columna metadata) no corrió
+  const baseInsert: any = { user_id: userId, nombre, status: 'processing' };
+  const insertWithMeta = { ...baseInsert, metadata: Object.keys(metadata).length ? metadata : {} };
+
+  let { data: tour, error: tourErr } = await admin
     .from('tours')
-    .insert({
-      user_id: userId,
-      nombre,
-      status: 'processing',
-      metadata: Object.keys(metadata).length ? metadata : {},
-    })
+    .insert(insertWithMeta)
     .select('id')
     .single();
 
+  // Si Postgres rechaza por columna 'metadata' inexistente → reintenta sin ella.
+  if (tourErr && /column .*metadata.* does not exist/i.test(tourErr.message)) {
+    console.warn('[tours/POST] columna metadata no existe — reintentando sin ella. Ejecutá supabase/migrations/0003_metadata.sql');
+    const retry = await admin.from('tours').insert(baseInsert).select('id').single();
+    tour = retry.data;
+    tourErr = retry.error;
+  }
+
   if (tourErr || !tour) {
     return NextResponse.json(
-      { error: 'No pudimos crear el paseo. Intenta de nuevo.' },
+      { error: `No pudimos crear el paseo: ${tourErr?.message ?? 'error desconocido'}` },
       { status: 500 }
     );
   }
