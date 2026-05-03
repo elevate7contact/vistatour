@@ -133,9 +133,16 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single();
 
-  // Si Postgres rechaza por columna 'metadata' inexistente → reintenta sin ella.
-  if (tourErr && /column .*metadata.* does not exist/i.test(tourErr.message)) {
-    console.warn('[tours/POST] columna metadata no existe — reintentando sin ella. Ejecutá supabase/migrations/0003_metadata.sql');
+  // Si Postgres O Supabase-js rechazan por columna 'metadata' inexistente → reintenta sin ella.
+  // Cubre AMBOS formatos de error:
+  //  - Postgres directo: "column \"metadata\" of relation \"tours\" does not exist"
+  //  - Supabase-js schema cache: "Could not find the 'metadata' column of 'tours' in the schema cache"
+  const metadataMissing =
+    tourErr && /metadata/i.test(tourErr.message) &&
+    /(does not exist|schema cache|could not find)/i.test(tourErr.message);
+
+  if (metadataMissing) {
+    console.warn('[tours/POST] columna metadata no existe — reintentando sin ella. Correr supabase/migrations/0003_metadata.sql');
     const retry = await admin.from('tours').insert(baseInsert).select('id').single();
     tour = retry.data;
     tourErr = retry.error;
