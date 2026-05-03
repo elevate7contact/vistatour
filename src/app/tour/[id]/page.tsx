@@ -42,14 +42,31 @@ interface SceneRow {
 
 export default async function TourPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const { data: tour } = await supabase
+
+  // Query defensiva: primero los campos base que siempre existen,
+  // después metadata por separado (puede fallar si la migración 0003
+  // todavía no corrió). Sin esto, si la columna metadata no existe el
+  // SELECT falla silencioso y page.tsx devuelve 404 aunque el tour exista.
+  const { data: tourBase } = await supabase
     .from('tours')
-    .select('id, nombre, status, user_id, metadata')
+    .select('id, nombre, status, user_id')
     .eq('id', params.id)
     .single();
 
-  if (!tour) notFound();
-  const t = tour as TourRow;
+  if (!tourBase) notFound();
+
+  // Intento opcional de leer metadata. Si la columna no existe → null.
+  let metadata: Record<string, any> | null = null;
+  try {
+    const { data: metaRow } = await supabase
+      .from('tours')
+      .select('metadata')
+      .eq('id', params.id)
+      .single();
+    metadata = (metaRow as any)?.metadata ?? null;
+  } catch { /* migración 0003 pendiente — seguimos sin metadata */ }
+
+  const t = { ...tourBase, metadata } as TourRow;
 
   // Detectar si el visitante actual es el dueño (para mostrar editor de hotspots)
   const { data: userRes } = await supabase.auth.getUser();
