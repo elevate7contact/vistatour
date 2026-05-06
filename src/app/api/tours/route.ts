@@ -199,8 +199,15 @@ export async function POST(req: NextRequest) {
     //    aunque la foto sea panorama nativo)
     const analysis = (await analyzePhotos(urls)) as Array<SceneAnalysis & { foto_original?: number }>;
 
-    // 4) Build scene rows. Si la foto es panorama nativo: panorama_url = image_url
-    //    directamente y panorama_status = 'complete'. Bypass total de Skybox.
+    // 4) Build scene rows.
+    //
+    // Pipeline post-Skybox: el cliente sube panoramas equirectangulares (ya sea
+    // foto Pano nativa del iPhone o panorama generado client-side con OpenCV.js
+    // a partir de N fotos del cuarto). En ambos casos llegan acá como panorama
+    // nativo (aspect ≥ 1.85) y van directo a panorama_url, status complete.
+    //
+    // Si por algún motivo se sube una foto plana (legacy / debug), se rechaza
+    // con error claro — ya no hay fallback de generación con IA.
     const rows = analysis.map((s, i) => {
       const srcIdx =
         typeof s.foto_original === 'number' && s.foto_original >= 0 && s.foto_original < urls.length
@@ -208,6 +215,15 @@ export async function POST(req: NextRequest) {
           : i;
       const meta = fileMeta[srcIdx];
       const isNative = meta?.isNativePanorama ?? false;
+
+      if (!isNative) {
+        throw new Error(
+          `La foto ${srcIdx + 1} (${meta?.width}×${meta?.height}) no es panorámica ` +
+          `(aspect ratio < 1.85). Subila como panorama nativo o usá el modo recorrido ` +
+          `(varias fotos por cuarto que se unen client-side).`
+        );
+      }
+
       return {
         tour_id: tourId,
         orden: s.orden,
@@ -216,12 +232,8 @@ export async function POST(req: NextRequest) {
         paleta_hex: s.paleta_hex,
         direccion_siguiente: s.direccion_siguiente,
         similitud_siguiente: s.similitud_siguiente,
-        // Para panoramas nativos NO necesitamos prompt Skybox — la foto YA es 360°.
-        skybox_prompt: isNative ? null : s.descripcion_fiel,
-        // Panorama nativo: panorama_url = image_url, status = complete (no pasa por Skybox).
-        // Foto plana: pendiente, Skybox la procesa después.
-        panorama_url: isNative ? urls[srcIdx] : null,
-        panorama_status: isNative ? 'complete' : 'pending',
+        panorama_url: urls[srcIdx],
+        panorama_status: 'complete',
       };
     });
 
@@ -229,17 +241,6 @@ export async function POST(req: NextRequest) {
     if (scErr) throw new Error(`Error guardando escenas: ${scErr.message}`);
 
     await admin.from('tours').update({ status: 'ready' }).eq('id', tourId);
-
-    // 5) Disparar generación de panoramas Skybox en background (fire-and-forget).
-    //    No bloqueamos la respuesta — el cliente vuelve a /tour/{id} y ahí
-    //    ve el progreso. Los panoramas se generan en paralelo (uno por scene).
-    const origin = req.headers.get('origin') || `https://${req.headers.get('host')}`;
-    fetch(`${origin}/api/tours/${tourId}/generate-panoramas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch((e) => {
-      console.error('[tours/POST] auto-trigger panoramas falló:', e);
-    });
 
     return NextResponse.json({ id: tourId }, { status: 201 });
   } catch (e) {

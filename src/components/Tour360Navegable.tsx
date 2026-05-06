@@ -291,11 +291,9 @@ export default function Tour360Navegable({ nombre, scenes: scenesProp, metadata,
   }, []);
 
   // Cambiar textura cuando cambia escena.
-  // CRÍTICO: si la foto del cliente YA es un panorama equirectangular nativo
-  // (subido en modo Pano del celular o desde cámara 360°), panorama_url
-  // y image_url son la MISMA URL. En ese caso NO hay panorama IA detrás
-  // ni foto-ancla curvada — la esfera carga directo la foto real.
-  // Esto elimina la distorsión "imagen pegada" del approach foto+IA.
+  // Post-Skybox: panorama_url SIEMPRE es la foto real del cliente (panorámica
+  // nativa o stitcheada client-side con OpenCV). El photoMesh queda oculto
+  // permanentemente — ya no hay foto-ancla curvada ni panorama IA detrás.
   useEffect(() => {
     const s = threeStateRef.current;
     if (!s.THREE || !s.material || !current?.panorama_url) return;
@@ -304,9 +302,8 @@ export default function Tour360Navegable({ nombre, scenes: scenesProp, metadata,
     loader.setCrossOrigin('anonymous');
 
     setTransitioning(true);
-    const isNativePanorama = current.panorama_url === current.image_url;
 
-    // 1) Panorama (real o IA) sobre la esfera principal
+    // Cargar el panorama real sobre la esfera principal
     loader.load(current.panorama_url, (newTex: any) => {
       if (s.texture) s.texture.dispose();
       s.texture = newTex;
@@ -318,38 +315,11 @@ export default function Tour360Navegable({ nombre, scenes: scenesProp, metadata,
       setTimeout(() => setTransitioning(false), 200);
     });
 
-    // 2) Foto-ancla curvada SOLO si el panorama es generado por IA.
-    //    Para panoramas nativos, ocultamos el mesh — la esfera ya muestra
-    //    la foto real del cliente sin necesidad de superposición.
-    if (s.photoMaterial && s.photoMesh) {
-      if (isNativePanorama) {
-        s.photoMesh.visible = false;
-      } else if (current.image_url) {
-        s.photoMesh.visible = true;
-        loader.load(current.image_url, (photoTex: any) => {
-          if (s.photoTexture) s.photoTexture.dispose();
-          s.photoTexture = photoTex;
-          s.photoMaterial.map = photoTex;
-          s.photoMaterial.color.set(0xffffff);
-          s.photoMaterial.needsUpdate = true;
-          const img = photoTex.image;
-          if (img && img.width && img.height) {
-            const aspect = img.width / img.height;
-            const fovH = Math.PI * 0.42;
-            const fovV = Math.min(Math.PI * 0.40, fovH / aspect);
-            const PHOTO_RADIUS = 480;
-            const oldGeo = s.photoMesh.geometry;
-            s.photoMesh.geometry = new s.THREE.SphereGeometry(
-              PHOTO_RADIUS, 64, 32,
-              -fovH / 2, fovH,
-              Math.PI / 2 - fovV / 2, fovV,
-            );
-            if (oldGeo) oldGeo.dispose();
-          }
-        });
-      }
+    // photoMesh siempre oculto — pipeline post-Skybox no usa foto-ancla
+    if (s.photoMesh) {
+      s.photoMesh.visible = false;
     }
-  }, [current?.panorama_url, current?.image_url]);
+  }, [current?.panorama_url]);
 
   // Navegación
   const goToScene = useCallback((idx: number) => {

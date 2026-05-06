@@ -12,14 +12,15 @@ este proyecto sin reconstruir el contexto desde cero.
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Project Settings → API | Sí |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Dashboard → Project Settings → API | Sí |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard → Project Settings → API → `service_role` | **NO — secret** |
-| `SKYBOX_API_KEY` | https://skybox.blockadelabs.com → API | **NO — secret** |
 | `ANTHROPIC_API_KEY` | https://console.anthropic.com → API Keys | **NO — secret** |
 | `ADMIN_TOKEN` | Generar uno random (ej: `openssl rand -hex 32`) | **NO — secret** |
 
-En Vercel: Project → Settings → Environment Variables → agregar las 6
+En Vercel: Project → Settings → Environment Variables → agregar las 5
 para Production, Preview y Development.
 
 En local: copiar a `.env.local` (ya está en `.gitignore`).
+
+> **Nota:** `SKYBOX_API_KEY` ya no se usa. Si quedó en Vercel, podés borrarla.
 
 ---
 
@@ -50,7 +51,7 @@ Esto crea las tablas `tours`, `scenes` y el bucket `tour-photos`.
 
 1. Supabase Dashboard → **Storage** → bucket `tour-photos`
 2. Settings → **Public bucket** → ON
-3. (Esto permite que las URLs de fotos sean leídas por Skybox y por el viewer)
+3. (Esto permite que las URLs de fotos sean leídas por el viewer)
 
 ### 2.4 Limpiar cuentas zombie (si existen)
 
@@ -67,62 +68,50 @@ O usar el endpoint `/api/admin/confirm-user` (ver sección 5).
 
 ---
 
-## 3. Pipeline único de generación 360°
+## 3. Pipeline único de generación 360° (post-Skybox)
 
-Solo existe **un** camino, documentado:
+Skybox AI fue removido. Todo el procesamiento de panoramas pasa al cliente,
+con OpenCV.js. Cero dependencias externas, cero costo por escena.
 
 ```
-Cliente sube fotos
+Cliente abre /dashboard/nuevo-tour
+      ↓
+Modo recorrido (default ON):
+  - Realtor sube N fotos por cuarto desde un punto fijo, rotando
+    (4/6/8 fotos según rotación elegida)
+  - OpenCV.js client-side une cada grupo en un panorama equirectangular
+  - Cada panorama tiene aspect ratio ≥ 1.85 (panorama nativo)
+      ↓
+Modo legacy (toggle OFF):
+  - Realtor sube panorámicas ya capturadas (iPhone Pano mode, Insta360, etc.)
       ↓
 POST /api/tours
       ↓
-1. Sube fotos a Supabase Storage
-2. Llama Claude vision → analyze.ts → genera descripcion_fiel
-3. Inserta scenes con skybox_prompt = descripcion_fiel
-4. Auto-trigger fire-and-forget → POST /api/tours/[id]/generate-panoramas
+1. Verifica que cada foto sea panorámica (aspect ≥ 1.85)
+   Si no, rechaza con error claro
+2. Sube fotos a Supabase Storage
+3. Claude vision (analyze.ts) genera tipo_espacio + paleta_hex + hotspots
+4. Inserta scenes con panorama_url = image_url, status = 'complete'
       ↓
-generate-panoramas/route.ts
+Cliente vuelve a /tour/[id]
       ↓
-Para cada scene → Skybox API con SKYBOX_FIDELITY_CONFIG
-  - enhance_prompt=false (no inventa)
-  - prompt_strength=0.3 (mínima creatividad)
-  - control_model=remix (foto del cliente como seed visual)
-  - negative_text agresivo
-      ↓
-Polling vía GET /api/tours/[id]/generate-panoramas
-      ↓
-panorama_url guardado en scene
-      ↓
-Cliente abre /tour/[id]
-      ↓
-Tour360Navegable.tsx
-  - Esfera con panorama IA (relleno lateral)
-  - Plano frontal con foto ORIGINAL (fidelidad 100%)
+Tour360Navegable.tsx renderiza la esfera 360° con la foto real
+  + hotspots editables si es el dueño
 ```
 
-> **No hay otro pipeline.** Si alguna vez ves código que llama a
-> `/api/skybox/generate` o usa `TourViewer` o `Skybox360Viewer`, es
-> legacy y hay que borrarlo.
+### Por qué stitching client-side
+
+| | Skybox AI (removido) | OpenCV stitching (actual) |
+|---|---|---|
+| Costo por escena | $0.18–0.50 USD | $0 |
+| Dependencia API | Blockade Labs | Cero |
+| Fidelidad al espacio real | ~60% (genera 270°) | 100% (foto real) |
+| Latencia | 30–60s por escena | 5–15s en navegador del cliente |
+| Falla externa | Posible | Imposible |
 
 ---
 
-## 4. Fidelidad de imagen — las 3 capas que la garantizan
-
-Si las imágenes vuelven a salir distintas, debugá en este orden:
-
-1. **Claude vision (`lib/anthropic/analyze.ts`)** — ¿está generando
-   `descripcion_fiel` correctamente? Logs en /api/tours POST.
-2. **Skybox params (`SKYBOX_FIDELITY_CONFIG` en generate-panoramas)** —
-   ¿alguien activó `enhance_prompt`? ¿bajó el negative_text?
-3. **Foto-ancla en viewer (`Tour360Navegable.tsx`)** — ¿está renderizando
-   el plano frontal? Inspect el DOM, debería ver el mesh con la imagen original.
-
-Si las 3 capas están OK y aún hay drift, probablemente Skybox cambió su
-modelo. Tunear `SKYBOX_FIDELITY_CONFIG`.
-
----
-
-## 5. Endpoint admin — confirmar cuentas zombie
+## 4. Endpoint admin — confirmar cuentas zombie
 
 ```bash
 curl -X POST https://vistatour.vercel.app/api/admin/confirm-user \
@@ -140,7 +129,7 @@ Respuestas:
 
 ---
 
-## 6. Deploy
+## 5. Deploy
 
 Push a `main` → Vercel auto-deploya. Tarda ~2 min.
 
@@ -155,13 +144,20 @@ Si pasa local, pasa en Vercel.
 
 ---
 
-## 7. Stack y versiones
+## 6. Stack y versiones
 
 - Next.js 14.2.18 (App Router)
 - React 18
 - Supabase JS + @supabase/ssr
-- Three.js (lazy-loaded)
+- Three.js (lazy-loaded en viewer)
+- @techstark/opencv-js (lazy-loaded en /nuevo-tour)
 - Tailwind CSS
 - TypeScript estricto
-- Skybox AI (Blockade Labs) — modelo realista, style 67
-- Claude Sonnet 4 vision para analyze
+- Claude Sonnet vision para análisis de escena (tipo_espacio, paleta, hotspots)
+
+---
+
+## 7. Página de test independiente
+
+`/test-stitch` — utilidad standalone para probar stitching de OpenCV.js
+sin pasar por todo el flujo de upload/auth. Útil para debug rápido.

@@ -1,19 +1,19 @@
 /**
  * /tour/[id] — Página pública del tour 360°
  * ─────────────────────────────────────────────────────────────────
- * Tres estados posibles:
- *   1. status='processing' o ninguna escena → "Armando tu paseo"
- *   2. Escenas con panorama_status='generating' o 'pending' → progress screen
- *   3. Todas las escenas con panorama_status='complete' → Tour360Navegable
+ * Pipeline post-Skybox: las escenas llegan con panorama_status='complete'
+ * desde el momento en que se crean (stitching client-side con OpenCV.js
+ * o panorama nativo iPhone Pano). No hay generación asíncrona.
  *
- * El pipeline ÚNICO de generación es /api/tours/[id]/generate-panoramas
- * (auto-trigger desde POST /api/tours). Aquí solo leemos estado.
+ * Estados posibles:
+ *   1. status='processing' o ninguna escena → "Armando tu paseo"
+ *   2. status='failed' → mensaje de fallo
+ *   3. Escenas listas → Tour360Navegable
  */
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import dynamicImport from 'next/dynamic';
 import type { Scene360 } from '@/components/Tour360Navegable';
-import TourProgressView from '@/components/TourProgressView';
 
 // Renombrado a `dynamicImport` para no colisionar con la export `dynamic`
 // que Next.js usa como route segment config.
@@ -104,44 +104,42 @@ export default async function TourPage({ params }: { params: { id: string } }) {
   const list = (scenes ?? []) as SceneRow[];
   if (list.length === 0) notFound();
 
-  // CASO 1 — Todas las escenas tienen panorama listo → modo navegable
-  const allPanoramasReady =
-    list.length > 0 && list.every((s) => s.panorama_status === 'complete' && s.panorama_url);
+  // Todas las escenas deberían venir con panorama_url + status='complete'
+  // desde el POST. Si alguna no, mostramos error simple en lugar de pantalla
+  // de progreso (ya no hay generación asíncrona post-Skybox).
+  const allReady = list.every((s) => s.panorama_status === 'complete' && s.panorama_url);
 
-  if (allPanoramasReady) {
-    const scenes360: Scene360[] = list.map((s) => ({
-      id: s.id,
-      orden: s.orden,
-      panorama_url: s.panorama_url!,
-      // image_url = foto ORIGINAL del cliente. Se renderiza como ancla frontal
-      // dentro del 360° para garantizar fidelidad fotográfica perfecta.
-      image_url: s.image_url,
-      tipo_espacio: s.tipo_espacio,
-      paleta_hex: s.paleta_hex,
-      hotspots: Array.isArray(s.hotspots) ? s.hotspots : [],
-    }));
+  if (!allReady) {
     return (
-      <Tour360Navegable
-        nombre={t.nombre}
-        scenes={scenes360}
-        metadata={t.metadata ?? null}
-        tourId={t.id}
-        canEdit={isOwner}
-      />
+      <main className="min-h-screen flex items-center justify-center bg-paseo-dark text-paseo-cream">
+        <div className="text-center max-w-md px-6">
+          <div className="text-2xl mb-3">Tour incompleto</div>
+          <p className="text-paseo-cream/60 text-sm">
+            Una o más escenas no tienen panorama. Esto puede pasar si las fotos no se subieron
+            como panorámicas. Vuelve al dashboard y creá un tour nuevo usando el modo recorrido.
+          </p>
+        </div>
+      </main>
     );
   }
 
-  // CASO 2 — Algunas escenas todavía generando o pendientes → pantalla de progreso
-  // (no hay fallback al pipeline viejo; el único pipeline es generate-panoramas)
-  const completeCount = list.filter((s) => s.panorama_status === 'complete').length;
-  const errorCount = list.filter((s) => s.panorama_status === 'error').length;
+  const scenes360: Scene360[] = list.map((s) => ({
+    id: s.id,
+    orden: s.orden,
+    panorama_url: s.panorama_url!,
+    image_url: s.image_url,
+    tipo_espacio: s.tipo_espacio,
+    paleta_hex: s.paleta_hex,
+    hotspots: Array.isArray(s.hotspots) ? s.hotspots : [],
+  }));
 
   return (
-    <TourProgressView
+    <Tour360Navegable
+      nombre={t.nombre}
+      scenes={scenes360}
+      metadata={t.metadata ?? null}
       tourId={t.id}
-      scenes={list}
-      completeCount={completeCount}
-      errorCount={errorCount}
+      canEdit={isOwner}
     />
   );
 }

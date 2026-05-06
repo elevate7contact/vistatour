@@ -7,9 +7,9 @@ export interface SceneAnalysis {
   direccion_siguiente: 'adelante' | 'izquierda' | 'derecha' | 'arriba' | 'abajo' | null;
   similitud_siguiente: 'alta' | 'media' | 'baja' | null;
   /** Descripción FIEL del espacio basada SOLO en lo que se ve en la foto.
-   *  Mobiliario real, colores reales, materiales reales. Se usa como prompt
-   *  para Skybox para que el panorama 360° sea fiel a la foto del cliente
-   *  (sin inventar muebles ni cambiar el espacio). */
+   *  Mobiliario real, colores reales, materiales reales. Histórico: alimentaba
+   *  el prompt de Skybox. Hoy se conserva como alt text / SEO y para futuras
+   *  features (ej. búsqueda semántica de inmuebles). */
   descripcion_fiel: string;
 }
 
