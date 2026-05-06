@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar';
 import DropzoneFotos from '@/components/DropzoneFotos';
 import LoaderEstados from '@/components/LoaderEstados';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { stitchMultipleScenes } from '@/lib/stitcher';
 
 export default function NuevoTourPage() {
   const router = useRouter();
@@ -13,6 +14,12 @@ export default function NuevoTourPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [stitchProgress, setStitchProgress] = useState<string | null>(null);
+
+  // Stitch mode: agrupar N fotos por escena y unirlas en panoramas client-side
+  // (reemplazo de Skybox — costo $0, fidelidad 100%)
+  const [stitchMode, setStitchMode] = useState(true);
+  const [photosPerScene, setPhotosPerScene] = useState(4);
 
   // Metadata premium opcional
   const [showMeta, setShowMeta] = useState(false);
@@ -28,18 +35,64 @@ export default function NuevoTourPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    setStitchProgress(null);
     if (!nombre.trim()) {
       setErr('Ponle un nombre al paseo.');
       return;
     }
-    if (files.length < 1 || files.length > 7) {
-      setErr('Selecciona entre 1 y 7 fotos.');
-      return;
+
+    // Validación según modo
+    if (stitchMode) {
+      if (files.length < 2) {
+        setErr(`Modo recorrido necesita al menos ${photosPerScene} fotos (1 escena).`);
+        return;
+      }
+      if (files.length % photosPerScene !== 0) {
+        setErr(
+          `${files.length} fotos no es múltiplo de ${photosPerScene}. ` +
+          `Ajustá el número de fotos por escena o subí más fotos.`
+        );
+        return;
+      }
+    } else {
+      if (files.length < 1 || files.length > 7) {
+        setErr('Selecciona entre 1 y 7 fotos.');
+        return;
+      }
     }
+
     setLoading(true);
+
+    // ── Stitching client-side: agrupa fotos en escenas y las une en panoramas ──
+    // Cada panorama resultante es equirectangular (aspect ≥ 1.85), entonces el
+    // backend lo detecta como panorama nativo y skipea Skybox automáticamente.
+    let filesToUpload = files;
+    if (stitchMode) {
+      try {
+        const groups: File[][] = [];
+        for (let i = 0; i < files.length; i += photosPerScene) {
+          groups.push(files.slice(i, i + photosPerScene));
+        }
+        setStitchProgress(`Uniendo ${files.length} fotos en ${groups.length} panoramas...`);
+        const panoramas = await stitchMultipleScenes(groups, (cur, tot, status) => {
+          setStitchProgress(`${status} (${cur}/${tot})`);
+        });
+        filesToUpload = panoramas;
+        setStitchProgress(`✅ ${panoramas.length} panoramas generados. Subiendo...`);
+      } catch (e) {
+        setErr(
+          'Error al unir las fotos: ' + (e as Error).message +
+          '. Probá tomar las fotos con más overlap (gira menos cada vez), o desactivá el modo recorrido.'
+        );
+        setLoading(false);
+        setStitchProgress(null);
+        return;
+      }
+    }
+
     const fd = new FormData();
     fd.append('nombre', nombre.trim());
-    files.forEach((f) => fd.append('files', f));
+    filesToUpload.forEach((f) => fd.append('files', f));
 
     // Metadata opcional
     if (precio.trim()) fd.append('precio', precio.trim());
@@ -70,7 +123,9 @@ export default function NuevoTourPage() {
           Nuevo <span className="serif-italic text-paseo-gold">paseo</span>
         </h1>
         <p className="text-paseo-cream/60 mb-8">
-          1 foto = vista 360° individual. 5+ fotos = recorrido navegable. En menos de 2 minutos.
+          {stitchMode
+            ? `Modo recorrido — ${photosPerScene} fotos por cuarto se unen en un panorama 360° real.`
+            : '1 foto = vista 360° individual. 5+ fotos = recorrido navegable.'}
         </p>
 
         <form onSubmit={onSubmit} className="space-y-6">
@@ -85,6 +140,61 @@ export default function NuevoTourPage() {
               className="w-full"
               disabled={loading}
             />
+          </div>
+
+          {/* Toggle modo recorrido (stitching client-side) */}
+          <div className="border border-paseo-gold/15 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-paseo-cream mb-1">
+                  Modo recorrido
+                  <span className="ml-2 text-xs text-paseo-gold/80 font-normal">
+                    {stitchMode ? '· activo' : '· apagado'}
+                  </span>
+                </div>
+                <div className="text-xs text-paseo-cream/60 leading-relaxed">
+                  {stitchMode ? (
+                    <>
+                      Tomá <strong className="text-paseo-cream">{photosPerScene} fotos por cuarto</strong> desde
+                      un mismo punto, rotando ~{Math.round(360 / photosPerScene)}° cada vez. Las uno en un
+                      panorama 360° real — fidelidad 100% al espacio, sin generación con IA.
+                    </>
+                  ) : (
+                    <>1 foto por escena. Para tours con efecto IA — usa el modo legacy.</>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStitchMode((v) => !v)}
+                disabled={loading}
+                className={`shrink-0 w-12 h-6 rounded-full transition relative ${
+                  stitchMode ? 'bg-paseo-gold' : 'bg-paseo-cream/20'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 w-5 h-5 bg-paseo-dark rounded-full transition ${
+                    stitchMode ? 'left-6' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+            {stitchMode && (
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-3">
+                <label className="text-xs text-paseo-cream/60">Fotos por cuarto:</label>
+                <select
+                  value={photosPerScene}
+                  onChange={(e) => setPhotosPerScene(Number(e.target.value))}
+                  disabled={loading}
+                  className="text-sm bg-paseo-dark border border-paseo-gold/30 rounded px-2 py-1 text-paseo-cream"
+                >
+                  <option value={4}>4 fotos (rotación 90°)</option>
+                  <option value={6}>6 fotos (rotación 60°)</option>
+                  <option value={8}>8 fotos (rotación 45°)</option>
+                </select>
+                <span className="text-xs text-paseo-cream/40">más fotos = más overlap = mejor unión</span>
+              </div>
+            )}
           </div>
 
           <DropzoneFotos onChange={setFiles} disabled={loading} />
@@ -203,6 +313,11 @@ export default function NuevoTourPage() {
           </div>
 
           {err && <p className="text-sm text-red-400">{err}</p>}
+          {stitchProgress && (
+            <div className="text-sm text-paseo-gold bg-paseo-gold/5 border border-paseo-gold/20 rounded p-3">
+              {stitchProgress}
+            </div>
+          )}
 
           <button
             type="submit"
